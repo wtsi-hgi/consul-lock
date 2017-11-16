@@ -1,17 +1,16 @@
 import logging
 import os
 import sys
-from argparse import ArgumentParser, Namespace, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
 from typing import NamedTuple, List, Any
 
 from consul import Consul
-from cli import MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS
 
 from locks import ConsulLock
 
 KEY_CLI_PARAMETER = "key"
-SESSION_TTL_CLI_PARAMETER = "session-ttl"
+LOCK_TTL_CLI_PARAMETER = "lock-ttl"
 _METHOD_CLI_IMPLICIT_PARAMETER = "method"
 
 CONSUL_HOST_ENVIRONMENT_VARIABLE = "CONSUL_HOST"
@@ -22,7 +21,7 @@ CONSUL_DATACENTRE_ENVIRONMENT_VARIABLE = "CONSUL_DC"
 CONSUL_VERIFY_ENVIRONMENT_VARIABLE = "CONSUL_VERIFY"
 CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE = "CONSUL_CERT"
 
-DEFAULT_SESSION_TTL = None
+DEFAULT_LOCK_TTL = None
 
 DEFAULT_CONSUL_PORT = 8500
 DEFAULT_CONSUL_TOKEN = None
@@ -53,7 +52,7 @@ class CliConfiguration(NamedTuple):
     """
     method: Method
     key: str
-    session_ttl: float = DEFAULT_SESSION_TTL
+    lock_ttl: float = DEFAULT_LOCK_TTL
 
 
 class ConsulConfiguration(NamedTuple):
@@ -75,14 +74,11 @@ def parse_cli_configration(arguments: List[str]):
     :param arguments:
     :return:
     """
-    parser = ArgumentParser(description="TODO", formatter_class=ArgumentDefaultsHelpFormatter)
+    parser = ArgumentParser(description="TODO")
     subparsers = parser.add_subparsers(help="TODO", dest=_METHOD_CLI_IMPLICIT_PARAMETER)
 
     lock_subparser = subparsers.add_parser(Method.LOCK.value, help="TODO")
-    lock_subparser.add_argument(
-        f"--{SESSION_TTL_CLI_PARAMETER}", type=float, default=DEFAULT_SESSION_TTL,
-        help=f"Time to live (ttl) of the session that will be created to hold the lock. Must be between {MIN_LOCK_TIMEOUT_IN_SECONDS} and {MAX_LOCK_TIMEOUT_IN_SECONDS} (inclusive). If not defined, the session "
-             "will not expire.")
+    lock_subparser.add_argument(f"--{LOCK_TTL_CLI_PARAMETER}", type=float, default=DEFAULT_LOCK_TTL, help="TODO")
 
     unlock_subparser = subparsers.add_parser(Method.UNLOCK.value, help="TODO")
 
@@ -92,7 +88,7 @@ def parse_cli_configration(arguments: List[str]):
     return CliConfiguration(
         method=Method(_get_parameter_argument(_METHOD_CLI_IMPLICIT_PARAMETER, parsed_arguments)),
         key=_get_parameter_argument(KEY_CLI_PARAMETER, parsed_arguments),
-        lock_ttl=_get_parameter_argument(SESSION_TTL_CLI_PARAMETER, parsed_arguments))
+        lock_ttl=_get_parameter_argument(LOCK_TTL_CLI_PARAMETER, parsed_arguments))
 
 
 def _get_parameter_argument(parameter: str, parsed_arguments: Namespace) -> Any:
@@ -156,7 +152,7 @@ def main():
     consul_lock = ConsulLock(
         key=cli_configuration.key,
         consul_client=consul_client,
-        session_ttl_in_seconds=cli_configuration.session_ttl)
+        lock_ttl_in_seconds=cli_configuration.lock_ttl)
 
     if cli_configuration.method == Method.LOCK:
         # TODO: Timeout

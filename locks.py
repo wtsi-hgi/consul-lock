@@ -37,21 +37,21 @@ class ConsulLock:
                 f"Invalid lock timeout: {lock_timeout_in_seconds}. If defined, the timeout must be between "
                 f"{MIN_LOCK_TIMEOUT_IN_SECONDS} and {MAX_LOCK_TIMEOUT_IN_SECONDS} (inclusive).")
 
-    def __init__(self, key: str, consul_client: Consul, session_ttl_in_seconds: float=None,
+    def __init__(self, key: str, consul_client: Consul, lock_ttl_in_seconds: float=None,
                  lock_poll_interval_generator: Callable[[], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR):
         """
         TODO
         :param key:
         :param consul_client:
-        :param session_ttl_in_seconds:
+        :param lock_ttl_in_seconds:
         :param lock_poll_period_in_seconds:
         """
-        if session_ttl_in_seconds is not None:
-            ConsulLock.validate_lock_ttl(session_ttl_in_seconds)
+        if lock_ttl_in_seconds is not None:
+            ConsulLock.validate_lock_ttl(lock_ttl_in_seconds)
 
         self.key = key
         self.consul_client = consul_client
-        self._session_ttl_in_seconds = session_ttl_in_seconds
+        self._lock_ttl_in_seconds = lock_ttl_in_seconds
         self.lock_poll_interval_generator = lock_poll_interval_generator
 
     def acquire(self, blocking: bool=True, timeout: int=None) -> Optional[str]:
@@ -62,7 +62,7 @@ class ConsulLock:
         :return:
         """
         session_id = self.consul_client.session.create(
-            lock_delay=0, ttl=self._session_ttl_in_seconds, behavior="delete")
+            lock_delay=0, ttl=self._lock_ttl_in_seconds, behavior="delete")
 
         @timeout_decorator.timeout(timeout, timeout_exception=ConsulLockAcquireTimeout)
         def _acquire():
