@@ -4,15 +4,19 @@ import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
 from typing import NamedTuple, List, Any
-
+import json
 from consul import Consul
 
 from consullock._logging import create_logger, LOGGING_NAMESPACE
+from consullock.exceptions import ConsulLockAcquireTimeout
+from consullock.json_mappers import ConsulLockInformationJSONEncoder
 from consullock.locks import MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulLock, PermissionDeniedError
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
 VERBOSE_CLI_SHORT_PARAMETER = "v"
+NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
+TIMEOUT_CLI_PARAMETER = "timeout"
 
 METHOD_CLI_PARAMETER_ACCESS = "method"
 
@@ -28,6 +32,8 @@ CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE = "CONSUL_CERT"
 
 DEFAULT_SESSION_TTL = MAX_LOCK_TIMEOUT_IN_SECONDS
 DEFAULT_LOG_VEBOSITY = logging.WARN
+DEFAULT_NON_BLOCKING = False
+DEFAULT_TIMEOUT = 0.0
 
 DEFAULT_CONSUL_PORT = 8500
 DEFAULT_CONSUL_TOKEN = None
@@ -41,6 +47,7 @@ MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE = 1
 INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE = 2
 INVALID_CLI_ARGUMENT_EXIT_CODE = 3
 PERMISSION_DENIED_EXIT_CODE = 4
+LOCK_ACQUIRE_TIMEOUT_EXIT_CODE = 5
 
 _NO_DEFAULT_SENTINEL = object()
 
@@ -58,11 +65,11 @@ class Method(Enum):
     """
     TODO
     """
-    # TODO: Aliases (aquire)
     LOCK = "lock"
     UNLOCK = "unlock"
 
 
+# TODO: Just config?
 class CliConfiguration(NamedTuple):
     """
     TODO
@@ -71,11 +78,13 @@ class CliConfiguration(NamedTuple):
     key: str
     session_ttl: float = DEFAULT_SESSION_TTL
     log_verbosity: int = DEFAULT_LOG_VEBOSITY
+    non_blocking: bool = DEFAULT_NON_BLOCKING
+    timeout: float = DEFAULT_TIMEOUT
 
 
 class ConsulConfiguration(NamedTuple):
     """
-    TODO
+    Configuration for Consul server.
     """
     host: str
     port: int = DEFAULT_CONSUL_PORT
@@ -86,27 +95,31 @@ class ConsulConfiguration(NamedTuple):
     certificate: str = DEFAULT_CONSUL_CERTIFICATE
 
 
-def parse_cli_configration(arguments: List[str]):
+def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     """
-    TODO
-    :param arguments:
-    :return:
+    Parses the configuration passed in via command line arguments.
+    :param arguments: CLI arguments
+    :return: the configuration
     """
-    parser = ArgumentParser(description="TODO")
-    subparsers = parser.add_subparsers(help="TODO", dest=METHOD_CLI_PARAMETER_ACCESS)
+    parser = ArgumentParser(description="Tool to use locks in Consul")
 
-    lock_subparser = subparsers.add_parser(Method.LOCK.value, help="TODO")
+    subparsers = parser.add_subparsers(dest=METHOD_CLI_PARAMETER_ACCESS, help="Function")
+    subparsers.add_parser(Method.UNLOCK.value, help="release a lock")
+    lock_subparser = subparsers.add_parser(Method.LOCK.value, help="acquire a lock")
     lock_subparser.add_argument(
         f"--{SESSION_TTL_CLI_LONG_PARAMETER}", type=float, default=DEFAULT_SESSION_TTL,
-        help=f"Time to live (ttl) in seconds of the session that will be created to hold the lock. Must be between "
+        help=f"time to live (ttl) in seconds of the session that will be created to hold the lock. Must be between "
              f"{MIN_LOCK_TIMEOUT_IN_SECONDS}s and {MAX_LOCK_TIMEOUT_IN_SECONDS}s (inclusive). If set to "
-             f"{NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE}, the session will not expire.")
+             f"{NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE}, the session will not expire")
+    lock_subparser.add_argument(f"--{NON_BLOCKING_CLI_LONG_PARAMETER}", action="store_true",
+                                default=DEFAULT_NON_BLOCKING, help="do not block if cannot lock straight away")
+    lock_subparser.add_argument(f"--{TIMEOUT_CLI_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
+                                help="give up trying to acquire the key after this may seconds (where 0 is never)")
 
-    unlock_subparser = subparsers.add_parser(Method.UNLOCK.value, help="TODO")
 
-    parser.add_argument(KEY_CLI_PARAMETER, type=str, help="TODO")
+    parser.add_argument(KEY_CLI_PARAMETER, type=str, help="The lock identifier")
     parser.add_argument(f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
-                        help="Increase the level of log verbosity (add multiple increase further)")
+                        help="increase the level of log verbosity (add multiple increase further)")
 
     parsed_arguments = parser.parse_args(arguments)
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
@@ -116,16 +129,21 @@ def parse_cli_configration(arguments: List[str]):
         method=Method(_get_parameter_argument(METHOD_CLI_PARAMETER_ACCESS, parsed_arguments)),
         key=_get_parameter_argument(KEY_CLI_PARAMETER, parsed_arguments),
         session_ttl=session_ttl,
-        log_verbosity=_get_verbosity(parsed_arguments))
+        log_verbosity=_get_verbosity(parsed_arguments),
+        # TODO: If config for release, these values are meaningless! Should be differnent subclass and not need "default"
+        non_blocking=_get_parameter_argument(
+            NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
+        timeout=_get_parameter_argument(TIMEOUT_CLI_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT))
 
 
 def _get_verbosity(parsed_arguments: Namespace) -> int:
     """
-    TODO
-    :param parsed_arguments:
-    :return:
+    Gets the verbosity level from the parsed arguments.
+    :param parsed_arguments: the parsed arguments
+    :return: the verbosity level implied
     """
-    verbosity = DEFAULT_LOG_VEBOSITY - (int(_get_parameter_argument(VERBOSE_CLI_SHORT_PARAMETER, parsed_arguments)) * 10)
+    verbosity = DEFAULT_LOG_VEBOSITY - \
+                (int(_get_parameter_argument(VERBOSE_CLI_SHORT_PARAMETER, parsed_arguments)) * 10)
     if verbosity < 10:
         raise InvalidCliArgumentError("Cannot provide any further logging - reduce log verbosity")
     assert verbosity <= logging.CRITICAL
@@ -209,18 +227,21 @@ def main():
 
     try:
         if cli_configuration.method == Method.LOCK:
-            # TODO: Timeout
-            session_id = consul_lock.acquire()
-            print(session_id)
-        else:
+            lock_information = consul_lock.acquire(
+                blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
+            print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
+        elif cli_configuration.method == Method.UNLOCK:
             consul_lock.release()
     except PermissionDeniedError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly (currently set to \"{consul_configuration.token}\")?"
         logger.error(error_message)
-        if cli_configuration.log_verbosity:
-            raise ValueError(error_message) from e
+        logger.debug(e)
         exit(PERMISSION_DENIED_EXIT_CODE)
+    # TODO: This exception only relates to acquire method
+    except ConsulLockAcquireTimeout as e:
+        logger.debug(e)
+        exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
 
     exit(SUCCESS_EXIT_CODE)
 

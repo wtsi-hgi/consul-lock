@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from time import sleep
 from typing import Callable, Optional, Any
-
+import atexit
 from consul import Consul
 from timeout_decorator import timeout_decorator
 
@@ -14,7 +14,7 @@ from consullock.model import ConsulLockInformation
 
 from consul.base import ACLPermissionDenied, ConsulException
 
-DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 5.0
+DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 1.0
 
 MIN_LOCK_TIMEOUT_IN_SECONDS = 10
 MAX_LOCK_TIMEOUT_IN_SECONDS = 86400
@@ -22,7 +22,7 @@ MAX_LOCK_TIMEOUT_IN_SECONDS = 86400
 logger = create_logger(__name__)
 
 
-class ConsulError(Exception):
+class ConsulError(BaseException):
     """
     Wrapped exception from the underlying library dealing with Consul.
     """
@@ -46,20 +46,19 @@ def _exception_converter(callable: Callable) -> Callable:
     :param callable: the callable to convert exceptions of
     :return: wrapped callable
     """
-    def wrapped(args, *kwargs) -> Any:
-        e = None
+    def wrapped(*args, **kwargs) -> Any:
         try:
-            return callable(args, *kwargs)
-        except ConsulError as e:
-            raise e
+            return callable(*args, **kwargs)
         except ACLPermissionDenied as e:
             raise PermissionDeniedError() from e
         except ConsulException as e:
             if "invalid session" in e.args[0]:
                 raise SessionLostError() from e
+            else:
+                raise ConsulError() from e
+        except BaseException as e:
+            raise e
         except Exception as e:
-            pass
-        if e is not None:
             raise ConsulError() from e
     return wrapped
 
@@ -99,32 +98,45 @@ class ConsulLock:
         self.lock_poll_interval_generator = lock_poll_interval_generator
 
     @_exception_converter
-    def acquire(self, blocking: bool=True, timeout: int=None) -> Optional[str]:
+    def acquire(self, blocking: bool=True, timeout: float=None) -> Optional[ConsulLockInformation]:
         """
         TODO
         :param blocking:
-        :param timeout:
+        :param timeout: timeout in seconds
         :return:
         """
         session_id = self.consul_client.session.create(
             lock_delay=0, ttl=self._session_ttl_in_seconds, behavior="delete")
         logger.info(f"Created session with ID: {session_id}")
 
+        def _destroy_session():
+            logger.debug(f"Destroying session...")
+            self.consul_client.session.destroy(session_id=session_id)
+            logger.info(f"Destroyed session")
+
+        # Try to stop zombie session when premature exit
+        atexit.register(_destroy_session)
+
         @timeout_decorator.timeout(timeout, timeout_exception=ConsulLockAcquireTimeout)
-        def _acquire():
+        def _acquire() -> ConsulLockInformation:
             while True:
-                success = self._acquire_consul_key(session_id)
-                if success:
-                    return True
-                elif not blocking:
-                    return False
+                logger.debug("Going to acquire lock")
+                lock_information = self._acquire_consul_key(session_id)
+                if lock_information is not None or not blocking:
+                    logger.debug("Acquired lock!")
+                    return lock_information
+                else:
+                    logger.debug("Could not acquire lock (already locked)")
                 interval = self.lock_poll_interval_generator()
+                logger.debug(f"Sleeping for {interval}s")
                 sleep(interval)
 
-        try:
-            return session_id if _acquire() else None
-        except ConsulLockAcquireTimeout:
-            return None
+        lock_information = _acquire()
+        if lock_information is None:
+            _destroy_session()
+        atexit.unregister(_destroy_session)
+        return lock_information
+
 
     @_exception_converter
     def release(self) -> bool:
@@ -147,7 +159,7 @@ class ConsulLock:
         return unlocked
 
     @_exception_converter
-    def _acquire_consul_key(self, session_id: str):
+    def _acquire_consul_key(self, session_id: str) -> ConsulLockInformation:
         """
         TODO
         :param session_id:
@@ -155,5 +167,5 @@ class ConsulLock:
         """
         lock_information = ConsulLockInformation(session_id, datetime.utcnow())
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
-        logger.debug(f"Key value {value}")
-        return self.consul_client.kv.put(key=self.key, value=value, acquire=session_id)
+        success = self.consul_client.kv.put(key=self.key, value=value, acquire=session_id)
+        return lock_information if success else None
