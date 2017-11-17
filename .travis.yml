@@ -1,0 +1,19 @@
+language: python
+
+python:
+  - 3.6
+
+before_install:
+  - pip install codecov coverage
+
+install:
+  - pip install -r requirements.txt
+
+script:
+  - PYTHONPATH=. coverage run -m unittest discover -v -s openstackinfo/tests
+  - coverage run setup.py install
+  - coverage combine -a
+  - coverage report
+
+after_success:
+  - codecov

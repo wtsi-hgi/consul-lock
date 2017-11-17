@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-from consullock.common import PACKAGE_NAME, DESCRIPTION
+from consullock.common import PACKAGE_NAME, DESCRIPTION, EXECUTABLE_NAME
 
 try:
     from pypandoc import convert
@@ -21,7 +21,7 @@ setup(
     long_description=read_markdown("README.md"),
     entry_points={
         "console_scripts": [
-            "consul-lock=consullock.cli:main"
+            f"{EXECUTABLE_NAME}=consullock.cli:main"
         ]
     }
 )

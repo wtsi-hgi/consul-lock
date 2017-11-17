@@ -116,7 +116,7 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     lock_subparser.add_argument(f"--{NON_BLOCKING_CLI_LONG_PARAMETER}", action="store_true",
                                 default=DEFAULT_NON_BLOCKING, help="do not block if cannot lock straight away")
     lock_subparser.add_argument(f"--{TIMEOUT_CLI_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
-                                help="give up trying to acquire the key after this may seconds (where 0 is never)")
+                                help="give up trying to acquire the key after this many seconds (where 0 is never)")
 
 
     parser.add_argument(KEY_CLI_PARAMETER, type=str, help="the lock identifier")
@@ -188,12 +188,12 @@ def get_consul_configuration_from_environment() -> ConsulConfiguration:
         certificate=os.environ.get(CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_CERTIFICATE))
 
 
-def main():
+def main(cli_arguments: List[str]):
     """
     Entrypoint.
     """
     try:
-        cli_configuration = parse_cli_configration(sys.argv[1:])
+        cli_configuration = parse_cli_configration(cli_arguments)
     except InvalidCliArgumentError as e:
         logger.error(e)
         exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
@@ -249,4 +249,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

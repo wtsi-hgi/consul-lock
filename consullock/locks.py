@@ -1,18 +1,17 @@
+import atexit
 import json
-import logging
 from datetime import datetime
 from time import sleep
 from typing import Callable, Optional, Any
-import atexit
+
 from consul import Consul
+from consul.base import ACLPermissionDenied, ConsulException
 from timeout_decorator import timeout_decorator
 
 from consullock._logging import create_logger
 from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
 from consullock.model import ConsulLockInformation
-
-from consul.base import ACLPermissionDenied, ConsulException
 
 DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 1.0
 
