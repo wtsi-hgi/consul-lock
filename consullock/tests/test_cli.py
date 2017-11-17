@@ -1,12 +1,16 @@
 import unittest
 
 from consullock.cli import main
-from consullock.common import EXECUTABLE_NAME
+from consullock.common import DESCRIPTION
 
 
-class MyTestCase(unittest.TestCase):
-    def test_something(self):
-        main([EXECUTABLE_NAME, "-h"])
+class TestCli(unittest.TestCase):
+    """
+    TODO
+    """
+    def test_help(self):
+        contents = main(["-h"])
+        self.assertIn(DESCRIPTION, contents)
 
 
 if __name__ == "__main__":
