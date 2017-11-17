@@ -1,0 +1,14 @@
+Metadata-Version: 1.0
+Name: consullock
+Version: 1.0.0b0
+Summary: Tool to use locks in Consul
+Home-page: https://github.com/wtsi-hgi/consul-lock
+Author: UNKNOWN
+Author-email: UNKNOWN
+License: MIT
+Description-Content-Type: UNKNOWN
+Description: ## Alternatives
+        https://github.com/alaa/consul-lock
+        https://github.com/fidian/consul-locker
+        https://github.com/KurToMe/python-consul-lock
+Platform: UNKNOWN

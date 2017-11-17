@@ -1,0 +1,3 @@
+[console_scripts]
+consul-lock = consullock.cli:main
+
