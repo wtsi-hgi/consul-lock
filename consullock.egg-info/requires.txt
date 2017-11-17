@@ -1,3 +1,0 @@
-python-consul
-timeout-decorator
-hgijson
