@@ -44,7 +44,6 @@ PERMISSION_DENIED_EXIT_CODE = 4
 
 _NO_DEFAULT_SENTINEL = object()
 
-# logger = logging.getLogger(__name__)
 logger = create_logger(__name__)
 
 
@@ -212,9 +211,9 @@ def main():
         if cli_configuration.method == Method.LOCK:
             # TODO: Timeout
             session_id = consul_lock.acquire()
-            logger.info(session_id)
+            print(session_id)
         else:
-            released = consul_lock.release()
+            consul_lock.release()
     except PermissionDeniedError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly (currently set to \"{consul_configuration.token}\")?"

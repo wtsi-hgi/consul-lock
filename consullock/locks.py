@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 from time import sleep
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 
 from consul import Consul
 from timeout_decorator import timeout_decorator
@@ -12,7 +12,7 @@ from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
 from consullock.model import ConsulLockInformation
 
-from consul.base import ACLPermissionDenied
+from consul.base import ACLPermissionDenied, ConsulException
 
 DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 5.0
 
@@ -22,23 +22,45 @@ MAX_LOCK_TIMEOUT_IN_SECONDS = 86400
 logger = create_logger(__name__)
 
 
-class PermissionDeniedError(Exception):
+class ConsulError(Exception):
     """
-    TODO
+    Wrapped exception from the underlying library dealing with Consul.
+    """
+
+
+class PermissionDeniedError(ConsulError):
+    """
+    Raised when Consul has refused to act due to a permission error.
+    """
+
+
+class SessionLostError(ConsulError):
+    """
+    Raised if a Consul session is lost in the middle of an operation.
     """
 
 
 def _exception_converter(callable: Callable) -> Callable:
     """
-    TODO
-    :param callable:
-    :return:
+    Converts exceptions from underlying libraries to native exceptions.
+    :param callable: the callable to convert exceptions of
+    :return: wrapped callable
     """
-    def wrapped(args, *kwargs):
+    def wrapped(args, *kwargs) -> Any:
+        e = None
         try:
-            callable(args, *kwargs)
+            return callable(args, *kwargs)
+        except ConsulError as e:
+            raise e
         except ACLPermissionDenied as e:
             raise PermissionDeniedError() from e
+        except ConsulException as e:
+            if "invalid session" in e.args[0]:
+                raise SessionLostError() from e
+        except Exception as e:
+            pass
+        if e is not None:
+            raise ConsulError() from e
     return wrapped
 
 
@@ -62,13 +84,12 @@ class ConsulLock:
     def __init__(self, key: str, consul_client: Consul, session_ttl_in_seconds: float=None,
                  lock_poll_interval_generator: Callable[[], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR):
         """
-        TODO
-        :param key:
+        Constructor.
+        :param key: lock key
         :param consul_client:
-        :param lock_ttl_in_seconds:
-        :param lock_poll_period_in_seconds:
+        :param session_ttl_in_seconds:
+        :param lock_poll_interval_generator:
         """
-
         if session_ttl_in_seconds is not None:
             ConsulLock.validate_session_ttl(session_ttl_in_seconds)
 
@@ -119,12 +140,11 @@ class ConsulLock:
             return False
 
         lock_information = json.loads(key_value["Value"].decode("utf-8"), cls=ConsulLockInformationJSONDecoder)
+        logger.info(f"Destroying the session {lock_information.session_id} that is holding the lock")
         unlocked = self.consul_client.session.destroy(session_id=lock_information.session_id)
 
         logger.info("Unlocked" if unlocked else "Went to unlock but was already released upon sending request")
         return unlocked
-
-
 
     @_exception_converter
     def _acquire_consul_key(self, session_id: str):
