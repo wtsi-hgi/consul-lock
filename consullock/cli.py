@@ -4,7 +4,7 @@ import os
 import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
-from typing import NamedTuple, List, Any
+from typing import NamedTuple, List, Any, Callable
 
 from consul import Consul
 
@@ -188,7 +188,7 @@ def get_consul_configuration_from_environment() -> ConsulConfiguration:
         certificate=os.environ.get(CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_CERTIFICATE))
 
 
-def main(cli_arguments: List[str]):
+def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
     """
     Entrypoint.
     """
@@ -196,7 +196,11 @@ def main(cli_arguments: List[str]):
         cli_configuration = parse_cli_configration(cli_arguments)
     except InvalidCliArgumentError as e:
         logger.error(e)
-        exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
+        exit_handler(INVALID_CLI_ARGUMENT_EXIT_CODE)
+        assert False
+    except SystemExit as e:
+        exit_handler(e.code)
+        assert False
 
     if cli_configuration.log_verbosity:
         logging.getLogger(PACKAGE_NAME).setLevel(cli_configuration.log_verbosity)
@@ -205,10 +209,12 @@ def main(cli_arguments: List[str]):
         consul_configuration = get_consul_configuration_from_environment()
     except KeyError as e:
         logger.error(f"Cannot connect to Consul - the environment variable {e.args[0]} must be set")
-        exit(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE)
+        exit_handler(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE)
+        assert False
     except EnvironmentError as e:
         logger.error(e)
-        exit(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
+        exit_handler(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
+        assert False
 
     # TODO: Removed coupling to Consul library
     consul_client = Consul(
@@ -239,13 +245,15 @@ def main(cli_arguments: List[str]):
                         f"correctly (currently set to \"{consul_configuration.token}\")?"
         logger.error(error_message)
         logger.debug(e)
-        exit(PERMISSION_DENIED_EXIT_CODE)
+        exit_handler(PERMISSION_DENIED_EXIT_CODE)
+        assert False
     # TODO: This exception only relates to acquire method
     except ConsulLockAcquireTimeout as e:
         logger.debug(e)
-        exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
+        exit_handler(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
+        assert False
 
-    exit(SUCCESS_EXIT_CODE)
+    exit_handler(SUCCESS_EXIT_CODE)
 
 
 if __name__ == "__main__":
