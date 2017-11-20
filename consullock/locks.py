@@ -8,15 +8,13 @@ from consul import Consul
 from consul.base import ACLPermissionDenied, ConsulException
 from timeout_decorator import timeout_decorator
 
+from consullock._helpers import create_consul_client
 from consullock._logging import create_logger
+from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_LOCK_TIMEOUT_IN_SECONDS, \
+    MAX_LOCK_TIMEOUT_IN_SECONDS
 from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
-from consullock.model import ConsulLockInformation
-
-DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 1.0
-
-MIN_LOCK_TIMEOUT_IN_SECONDS = 10
-MAX_LOCK_TIMEOUT_IN_SECONDS = 86400
+from consullock.models import ConsulLockInformation, ConsulConfiguration
 
 logger = create_logger(__name__)
 
@@ -79,20 +77,26 @@ class ConsulLock:
                 f"Invalid session timeout: {session_timeout_in_seconds}. If defined, the timeout must be between "
                 f"{MIN_LOCK_TIMEOUT_IN_SECONDS} and {MAX_LOCK_TIMEOUT_IN_SECONDS} (inclusive).")
 
-    def __init__(self, key: str, consul_client: Consul, session_ttl_in_seconds: float=None,
-                 lock_poll_interval_generator: Callable[[], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR):
+    def __init__(self, key: str, consul_configuration: ConsulConfiguration=None, session_ttl_in_seconds: float=None,
+                 lock_poll_interval_generator: Callable[[], float]= DEFAULT_LOCK_POLL_INTERVAL_GENERATOR,
+                 consul_client: Consul = None):
         """
-        Constructor.
+        TODO
         :param key: lock key
-        :param consul_client:
+        :param consul_configuration:
         :param session_ttl_in_seconds:
         :param lock_poll_interval_generator:
+        :param consul_client:
         """
         if session_ttl_in_seconds is not None:
             ConsulLock.validate_session_ttl(session_ttl_in_seconds)
+        if consul_configuration is not None and consul_client is not None:
+            raise ValueError("Must either define `consul_configuration` or `consul_client`, not both")
+        if consul_configuration is None and consul_client is None:
+            raise ValueError("Either `consul_configuration` xor `consul_client` must be given")
 
         self.key = key
-        self.consul_client = consul_client
+        self.consul_client = consul_client or create_consul_client(consul_configuration)
         self._session_ttl_in_seconds = session_ttl_in_seconds
         self.lock_poll_interval_generator = lock_poll_interval_generator
 

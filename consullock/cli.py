@@ -6,13 +6,17 @@ from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
 from typing import NamedTuple, List, Any, Callable
 
-from consul import Consul
-
 from consullock._logging import create_logger
 from consullock.common import DESCRIPTION, PACKAGE_NAME
+from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, DEFAULT_TIMEOUT, \
+    DEFAULT_CONSUL_PORT, DEFAULT_CONSUL_TOKEN, DEFAULT_CONSUL_SCHEME, DEFAULT_CONSUL_DATACENTRE, DEFAULT_CONSUL_VERIFY, \
+    DEFAULT_CONSUL_CERTIFICATE, SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
+    INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, \
+    LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS
 from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
-from consullock.locks import MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulLock, PermissionDeniedError
+from consullock.locks import ConsulLock, PermissionDeniedError
+from consullock.models import ConsulConfiguration
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
@@ -31,25 +35,6 @@ CONSUL_SCHEME_ENVIRONMENT_VARIABLE = "CONSUL_SCHEME"
 CONSUL_DATACENTRE_ENVIRONMENT_VARIABLE = "CONSUL_DC"
 CONSUL_VERIFY_ENVIRONMENT_VARIABLE = "CONSUL_VERIFY"
 CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE = "CONSUL_CERT"
-
-DEFAULT_SESSION_TTL = MAX_LOCK_TIMEOUT_IN_SECONDS
-DEFAULT_LOG_VEBOSITY = logging.WARN
-DEFAULT_NON_BLOCKING = False
-DEFAULT_TIMEOUT = 0.0
-
-DEFAULT_CONSUL_PORT = 8500
-DEFAULT_CONSUL_TOKEN = None
-DEFAULT_CONSUL_SCHEME = "http"
-DEFAULT_CONSUL_DATACENTRE = None
-DEFAULT_CONSUL_VERIFY = True
-DEFAULT_CONSUL_CERTIFICATE = None
-
-SUCCESS_EXIT_CODE = 0
-MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE = 1
-INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE = 2
-INVALID_CLI_ARGUMENT_EXIT_CODE = 3
-PERMISSION_DENIED_EXIT_CODE = 4
-LOCK_ACQUIRE_TIMEOUT_EXIT_CODE = 5
 
 _NO_DEFAULT_SENTINEL = object()
 
@@ -79,22 +64,9 @@ class CliConfiguration(NamedTuple):
     method: Method
     key: str
     session_ttl: float = DEFAULT_SESSION_TTL
-    log_verbosity: int = DEFAULT_LOG_VEBOSITY
+    log_verbosity: int = DEFAULT_LOG_VERBOSITY
     non_blocking: bool = DEFAULT_NON_BLOCKING
     timeout: float = DEFAULT_TIMEOUT
-
-
-class ConsulConfiguration(NamedTuple):
-    """
-    Configuration for Consul server.
-    """
-    host: str
-    port: int = DEFAULT_CONSUL_PORT
-    token: str = DEFAULT_CONSUL_TOKEN
-    scheme: str = DEFAULT_CONSUL_SCHEME
-    datacentre: str = DEFAULT_CONSUL_DATACENTRE
-    verify: bool = DEFAULT_CONSUL_VERIFY
-    certificate: str = DEFAULT_CONSUL_CERTIFICATE
 
 
 def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
@@ -144,7 +116,7 @@ def _get_verbosity(parsed_arguments: Namespace) -> int:
     :param parsed_arguments: the parsed arguments
     :return: the verbosity level implied
     """
-    verbosity = DEFAULT_LOG_VEBOSITY - \
+    verbosity = DEFAULT_LOG_VERBOSITY - \
                 (int(_get_parameter_argument(VERBOSE_CLI_SHORT_PARAMETER, parsed_arguments)) * 10)
     if verbosity < 10:
         raise InvalidCliArgumentError("Cannot provide any further logging - reduce log verbosity")
@@ -167,6 +139,7 @@ def _get_parameter_argument(parameter: str, parsed_arguments: Namespace, default
     return value
 
 
+# FIXME: use outside of CLI
 def get_consul_configuration_from_environment() -> ConsulConfiguration:
     """
     Gets credentials to use Consul from the environment.
@@ -216,21 +189,9 @@ def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
         exit_handler(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
         assert False
 
-    # TODO: Removed coupling to Consul library
-    consul_client = Consul(
-        host=consul_configuration.host,
-        port=consul_configuration.port,
-        token=consul_configuration.token,
-        scheme=consul_configuration.scheme,
-        dc=consul_configuration.datacentre,
-        verify=consul_configuration.verify,
-        cert=consul_configuration.certificate)
-    # Work around for https://github.com/cablehead/python-consul/issues/170
-    consul_client.http.session.headers.update({"X-Consul-Token": consul_configuration.token})
-
     consul_lock = ConsulLock(
         key=cli_configuration.key,
-        consul_client=consul_client,
+        consul_configuration=consul_configuration,
         session_ttl_in_seconds=cli_configuration.session_ttl)
 
     try:

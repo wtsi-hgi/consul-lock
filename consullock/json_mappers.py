@@ -1,7 +1,7 @@
 from hgijson import MappingJSONEncoderClassBuilder, JsonPropertyMapping, MappingJSONDecoderClassBuilder, \
     DatetimeISOFormatJSONEncoder, DatetimeISOFormatJSONDecoder
 
-from consullock.model import ConsulLockInformation
+from consullock.models import ConsulLockInformation
 
 
 mapping_schema = [
