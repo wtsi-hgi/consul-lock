@@ -63,7 +63,7 @@ def _exception_converter(callable: Callable) -> Callable:
     return wrapped
 
 
-def _raise_if_teardown_called(callable: Callable):
+def _raise_if_teardown_called(callable: Callable) -> Callable:
     """
     TODO
     :param callable:

@@ -11,7 +11,7 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     DEFAULT_TIMEOUT, SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
-    get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE
+    get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE
 from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
 from consullock.locks import ConsulLock, PermissionDeniedError
@@ -63,24 +63,29 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     :return: the configuration
     """
     parser = ArgumentParser(description=DESCRIPTION)
+    parser.add_argument(
+        f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
+        help="increase the level of log verbosity (add multiple increase further)")
+    subparsers = parser.add_subparsers(dest=METHOD_CLI_PARAMETER_ACCESS, help="action")
 
-    subparsers = parser.add_subparsers(dest=METHOD_CLI_PARAMETER_ACCESS, help="function")
-    subparsers.add_parser(Action.UNLOCK.value, help="release a lock")
+    unlock_subparser = subparsers.add_parser(Action.UNLOCK.value, help="release a lock")
+
     lock_subparser = subparsers.add_parser(Action.LOCK.value, help="acquire a lock")
     lock_subparser.add_argument(
         f"--{SESSION_TTL_CLI_LONG_PARAMETER}", type=float, default=DEFAULT_SESSION_TTL,
         help=f"time to live (ttl) in seconds of the session that will be created to hold the lock. Must be between "
              f"{MIN_LOCK_TIMEOUT_IN_SECONDS}s and {MAX_LOCK_TIMEOUT_IN_SECONDS}s (inclusive). If set to "
              f"{NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE}, the session will not expire")
-    lock_subparser.add_argument(f"--{NON_BLOCKING_CLI_LONG_PARAMETER}", action="store_true",
-                                default=DEFAULT_NON_BLOCKING, help="do not block if cannot lock straight away")
-    lock_subparser.add_argument(f"--{TIMEOUT_CLI_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
-                                help="give up trying to acquire the key after this many seconds (where 0 is never)")
+    lock_subparser.add_argument(
+        f"--{NON_BLOCKING_CLI_LONG_PARAMETER}", action="store_true",
+        default=DEFAULT_NON_BLOCKING, help="do not block if cannot lock straight away")
+    lock_subparser.add_argument(
+        f"--{TIMEOUT_CLI_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
+        help="give up trying to acquire the key after this many seconds (where 0 is never)")
 
-
-    parser.add_argument(KEY_CLI_PARAMETER, type=str, help="the lock identifier")
-    parser.add_argument(f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
-                        help="increase the level of log verbosity (add multiple increase further)")
+    for subparser in [unlock_subparser, lock_subparser]:
+        subparser.add_argument(
+            KEY_CLI_PARAMETER, type=str, help="the lock identifier")
 
     parsed_arguments = parser.parse_args(arguments)
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
@@ -126,7 +131,7 @@ def _get_parameter_argument(parameter: str, parsed_arguments: Namespace, default
     return value
 
 
-def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
+def main(cli_arguments: List[str]):
     """
     Entrypoint.
     """
@@ -134,11 +139,9 @@ def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
         cli_configuration = parse_cli_configration(cli_arguments)
     except InvalidCliArgumentError as e:
         logger.error(e)
-        exit_handler(INVALID_CLI_ARGUMENT_EXIT_CODE)
-        assert False
+        exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
     except SystemExit as e:
-        exit_handler(e.code)
-        assert False
+        exit(e.code)
 
     if cli_configuration.log_verbosity:
         logging.getLogger(PACKAGE_NAME).setLevel(cli_configuration.log_verbosity)
@@ -147,12 +150,10 @@ def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
         consul_configuration = get_consul_configuration_from_environment()
     except KeyError as e:
         logger.error(f"Cannot connect to Consul - the environment variable {e.args[0]} must be set")
-        exit_handler(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE)
-        assert False
+        exit(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE)
     except EnvironmentError as e:
         logger.error(e)
-        exit_handler(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
-        assert False
+        exit(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
 
     consul_lock = ConsulLock(
         key=cli_configuration.key,
@@ -161,25 +162,28 @@ def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
 
     try:
         if cli_configuration.action == Action.LOCK:
-            lock_information = consul_lock.acquire(
-                blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
+            try:
+                lock_information = consul_lock.acquire(
+                    blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
+            except ConsulLockAcquireTimeout as e:
+                logger.debug(e)
+                exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
             print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
+
+            if lock_information is None:
+                exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
+
         elif cli_configuration.action == Action.UNLOCK:
             print(json.dumps(consul_lock.release()))
+
     except PermissionDeniedError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly (currently set to \"{consul_configuration.token}\")?"
         logger.error(error_message)
         logger.debug(e)
-        exit_handler(PERMISSION_DENIED_EXIT_CODE)
-        assert False
-    # TODO: This exception only relates to acquire method
-    except ConsulLockAcquireTimeout as e:
-        logger.debug(e)
-        exit_handler(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
-        assert False
+        exit(PERMISSION_DENIED_EXIT_CODE)
 
-    exit_handler(SUCCESS_EXIT_CODE)
+    exit(SUCCESS_EXIT_CODE)
 
 
 if __name__ == "__main__":
