@@ -1,2 +1,2 @@
-useintest>=3.2.0
+useintest>=4.0.0
 capturewrap>=1.0.1
