@@ -9,7 +9,7 @@ from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, _EnvironmentPreservingTest, all_capture_builder
 from consullock.tests.test_locks import lock_when_unlocked, test_lock_when_locked
 
-from capturewrap import CaptureWrapBuilder, CaptureResult
+from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService
 
 

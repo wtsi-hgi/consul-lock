@@ -1,8 +1,8 @@
 import unittest
-from typing import Callable, Any, Tuple, Optional, List, Dict
+from typing import Callable, Tuple, List, Dict
 from unittest import TestCase
 
-from capturewrap import CaptureResult, CaptureWrapBuilder
+from capturewrap import CaptureResult
 from timeout_decorator import timeout_decorator
 
 from consullock.locks import ConsulLock

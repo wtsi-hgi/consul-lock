@@ -5,13 +5,14 @@ python:
 
 before_install:
   - pip install codecov coverage
+  - pip install -r test_requirements.txt
 
 install:
   - pip install -r requirements.txt
 
 script:
   - PYTHONPATH=. coverage run -m unittest discover -v -s consullock/tests
-  - coverage run setup.py install
+  - coverage run setup.py -q install
   - coverage combine -a
   - coverage report
 
