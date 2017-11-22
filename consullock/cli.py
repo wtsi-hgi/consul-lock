@@ -200,7 +200,7 @@ def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
                 blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
             print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
         elif cli_configuration.method == Method.UNLOCK:
-            consul_lock.release()
+            print(json.dumps(consul_lock.release()))
     except PermissionDeniedError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly (currently set to \"{consul_configuration.token}\")?"

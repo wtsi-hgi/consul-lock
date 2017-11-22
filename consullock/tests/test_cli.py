@@ -1,54 +1,53 @@
-import os
+import json
 import unittest
-from copy import deepcopy
 
 from consullock.cli import main, Method
 from consullock.common import DESCRIPTION
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
-from consullock.tests._common import TEST_KEY, set_consul_env, capture_stdout, capture_stdout_and_stderr
-from useintest.predefined.consul import ConsulServiceController
+from consullock.models import ConsulLockInformation
+from consullock.tests._common import TEST_KEY, _EnvironmentPreservingTest, all_capture_builder
+from consullock.tests.test_locks import lock_when_unlocked, test_lock_when_locked
 
-import json
-from typing import Tuple
+from capturewrap import CaptureWrapBuilder, CaptureResult
+from useintest.predefined.consul import ConsulDockerisedService
 
-class TestCli(unittest.TestCase):
+
+class TestCli(_EnvironmentPreservingTest):
     """
     Tests for the CLI.
     """
-    def setUp(self):
-        self._consul_service_controller = ConsulServiceController()
-        self._env_cache = deepcopy(os.environ)
+    @staticmethod
+    def _locker(key: str, service: ConsulDockerisedService) -> CaptureResult:
+        return all_capture_builder.build(main)([Method.LOCK.value, key])
 
-    def tearDown(self):
-        os.environ.clear()
-        os.environ.update(self._env_cache)
+    @staticmethod
+    def _unlocker(key: str, service: ConsulDockerisedService) -> CaptureResult:
+        return all_capture_builder.build(main)([Method.UNLOCK.value, key])
 
     def test_help(self):
-        return_value, stdout, _, e = capture_stdout_and_stderr(main, ["-h"])
-        self.assertIsInstance(e, SystemExit)
-        self.assertEqual(SUCCESS_EXIT_CODE, e.code)
-        self.assertIn(DESCRIPTION, stdout)
+        captured_result = all_capture_builder.build(main)(["-h"])
+        self.assertIsInstance(captured_result.exception, SystemExit)
+        self.assertEqual(SUCCESS_EXIT_CODE, captured_result.exception.code)
+        self.assertIn(DESCRIPTION, captured_result.stdout)
 
     def test_run_without_consul_in_env(self):
         with self.assertRaises(SystemExit) as e:
             main([Method.UNLOCK.value, TEST_KEY])
         self.assertEqual(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, e.exception.code)
 
-    def test_lock_and_unlock(self):
-        with self._consul_service_controller.start_service() as service:
-            set_consul_env(service)
-            return_value, stdout, _, e = capture_stdout_and_stderr(main, [Method.LOCK.value, TEST_KEY])
-            self.assertIsInstance(e, SystemExit)
-            self.assertEqual(SUCCESS_EXIT_CODE, e.code)
+    def test_lock_when_unlocked(self):
+        lock_result, unlock_result = lock_when_unlocked(self, TestCli._locker, TestCli._unlocker)
 
-            lock_information = json.loads(stdout, cls=ConsulLockInformationJSONDecoder)
-            return_value, stdout, _, e = capture_stdout_and_stderr(main, [Method.UNLOCK.value, TEST_KEY])
-            # TODO: There should be a value written to stdout...
+        self.assertIsInstance(lock_result.exception, SystemExit)
+        self.assertEqual(SUCCESS_EXIT_CODE, lock_result.exception.code)
+        self.assertIsInstance(
+            json.loads(lock_result.stdout, cls=ConsulLockInformationJSONDecoder), ConsulLockInformation)
 
+        self.assertTrue(json.loads(unlock_result.stdout))
 
-
-
+    def test_lock_when_locked(self):
+        test_lock_when_locked(self, TestCli._locker)
 
 
 if __name__ == "__main__":
