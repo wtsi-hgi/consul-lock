@@ -1,11 +1,14 @@
 import atexit
 import json
 from datetime import datetime
+from threading import Lock
 from time import sleep
-from typing import Callable, Optional, Any
+from typing import Callable, Optional, Any, Set
 
+import requests
 from consul import Consul
 from consul.base import ACLPermissionDenied, ConsulException
+from requests import Session
 from timeout_decorator import timeout_decorator
 
 from consullock._helpers import create_consul_client
@@ -60,6 +63,17 @@ def _exception_converter(callable: Callable) -> Callable:
     return wrapped
 
 
+def _raise_if_teardown_called(callable: Callable):
+    """
+    TODO
+    :param callable:
+    :return:
+    """
+    def wrapper(self, *args, **kwargs):
+        return callable(self, *args, **kwargs)
+    return wrapper
+
+
 class ConsulLock:
     """
     TODO
@@ -97,9 +111,16 @@ class ConsulLock:
 
         self.key = key
         self.consul_client = consul_client or create_consul_client(consul_configuration)
-        self._session_ttl_in_seconds = session_ttl_in_seconds
+        self.session_ttl_in_seconds = session_ttl_in_seconds
         self.lock_poll_interval_generator = lock_poll_interval_generator
+        self._acquiring_session_ids: Set[Session] = set()
 
+        # Try to stop any zombie sessions if premature exit
+        atexit.register(self.teardown)
+        self._teardown_called = False
+        self._teardown_lock = Lock()
+
+    @_raise_if_teardown_called
     @_exception_converter
     def acquire(self, blocking: bool=True, timeout: float=None) -> Optional[ConsulLockInformation]:
         """
@@ -109,22 +130,15 @@ class ConsulLock:
         :return:
         """
         session_id = self.consul_client.session.create(
-            lock_delay=0, ttl=self._session_ttl_in_seconds, behavior="delete")
+            lock_delay=0, ttl=self.session_ttl_in_seconds, behavior="delete")
+        self._acquiring_session_ids.add(session_id)
         logger.info(f"Created session with ID: {session_id}")
-
-        def _destroy_session():
-            logger.debug(f"Destroying session...")
-            self.consul_client.session.destroy(session_id=session_id)
-            logger.info(f"Destroyed session")
-
-        # Try to stop zombie session when premature exit
-        atexit.register(_destroy_session)
 
         @timeout_decorator.timeout(timeout, timeout_exception=ConsulLockAcquireTimeout)
         def _acquire() -> ConsulLockInformation:
             while True:
                 logger.debug("Going to acquire lock")
-                lock_information = self._acquire_consul_key(session_id)
+                lock_information = self._acquire_lock(session_id)
                 if lock_information is not None or not blocking:
                     logger.debug("Acquired lock!")
                     return lock_information
@@ -136,11 +150,13 @@ class ConsulLock:
 
         lock_information = _acquire()
         if lock_information is None:
-            _destroy_session()
-        atexit.unregister(_destroy_session)
+            self.consul_client.session.destroy(session_id=session_id)
+            self._acquiring_session_ids.remove(session_id)
+            logger.info(f"Destroyed session (did not acquire the lock)")
+
         return lock_information
 
-
+    @_raise_if_teardown_called
     @_exception_converter
     def release(self) -> bool:
         """
@@ -157,18 +173,44 @@ class ConsulLock:
         lock_information = json.loads(key_value["Value"].decode("utf-8"), cls=ConsulLockInformationJSONDecoder)
         logger.info(f"Destroying the session {lock_information.session_id} that is holding the lock")
         unlocked = self.consul_client.session.destroy(session_id=lock_information.session_id)
+        # This instance might be managing the removed session
+        try:
+            self._acquiring_session_ids.remove(lock_information.session_id)
+        except KeyError:
+            pass
 
         logger.info("Unlocked" if unlocked else "Went to unlock but was already released upon sending request")
         return unlocked
 
     @_exception_converter
-    def _acquire_consul_key(self, session_id: str) -> ConsulLockInformation:
+    def teardown(self):
         """
-        TODO
-        :param session_id:
-        :return:
+        Tears down the instance, removing any remaining sessions that this instance has created.
+
+        The instance must not be used after this method has been called.
+        """
+        with self._teardown_lock:
+            if not self._teardown_called:
+                self._teardown_called = True
+                logger.info(f"Destroying all sessions that have not acquired keys: {self._acquiring_session_ids}...")
+                for session_id in self._acquiring_session_ids:
+                    try:
+                        self.consul_client.session.destroy(session_id=session_id)
+                        logger.debug(f"Destroyed: {session_id}")
+                    except requests.exceptions.ConnectionError as e:
+                        logger.debug(e)
+                        logger.warning(f"Could not connect to Consul to clean up session {session_id}")
+                atexit.unregister(self.teardown)
+
+    def _acquire_lock(self, session_id: str) -> Optional[ConsulLockInformation]:
+        """
+        Attempts to get the lock using the given session.
+        :param session_id: the identifier of the Consul session that should try to hold the lock
+        :return: details about the lock if acquired, else `None`
         """
         lock_information = ConsulLockInformation(session_id, datetime.utcnow())
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
         success = self.consul_client.kv.put(key=self.key, value=value, acquire=session_id)
         return lock_information if success else None
+
+

@@ -52,7 +52,7 @@ def test_lock_when_locked(test: TestCase, locker: LockerCallable):
         try:
             test.assertRaises(timeout_decorator.TimeoutError, get_lock_with_timeout)
         finally:
-            consul_lock.release()
+            consul_lock.teardown()
 
 
 class TestConsulLock(_EnvironmentPreservingTest):
