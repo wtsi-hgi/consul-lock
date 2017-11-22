@@ -3,6 +3,9 @@ language: python
 python:
   - 3.6
 
+services:
+- docker
+
 before_install:
   - pip install codecov coverage
   - pip install -r test_requirements.txt
