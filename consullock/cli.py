@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
@@ -8,33 +7,22 @@ from typing import NamedTuple, List, Any, Callable
 
 from consullock._logging import create_logger
 from consullock.common import DESCRIPTION, PACKAGE_NAME
-from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, DEFAULT_TIMEOUT, \
-    DEFAULT_CONSUL_PORT, DEFAULT_CONSUL_TOKEN, DEFAULT_CONSUL_SCHEME, DEFAULT_CONSUL_DATACENTRE, DEFAULT_CONSUL_VERIFY, \
-    DEFAULT_CONSUL_CERTIFICATE, SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
-    INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, \
-    LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS
+from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, \
+    DEFAULT_TIMEOUT, SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
+    INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
+    MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
+    get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE
 from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
 from consullock.locks import ConsulLock, PermissionDeniedError
-from consullock.models import ConsulConfiguration
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
 VERBOSE_CLI_SHORT_PARAMETER = "v"
 NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
 TIMEOUT_CLI_PARAMETER = "timeout"
-
 METHOD_CLI_PARAMETER_ACCESS = "method"
-
 NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE = 0
-
-CONSUL_HOST_ENVIRONMENT_VARIABLE = "CONSUL_HOST"
-CONSUL_PORT_ENVIRONMENT_VARIABLE = "CONSUL_PORT"
-CONSUL_TOKEN_ENVIRONMENT_VARIABLE = "CONSUL_TOKEN"
-CONSUL_SCHEME_ENVIRONMENT_VARIABLE = "CONSUL_SCHEME"
-CONSUL_DATACENTRE_ENVIRONMENT_VARIABLE = "CONSUL_DC"
-CONSUL_VERIFY_ENVIRONMENT_VARIABLE = "CONSUL_VERIFY"
-CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE = "CONSUL_CERT"
 
 _NO_DEFAULT_SENTINEL = object()
 
@@ -43,25 +31,24 @@ logger = create_logger(__name__)
 
 class InvalidCliArgumentError(Exception):
     """
-    TODO
+    Raised when an invalid CLI argument has been givne.
     """
 
 
 @unique
-class Method(Enum):
+class Action(Enum):
     """
-    TODO
+    Actions available on the CLI.
     """
     LOCK = "lock"
     UNLOCK = "unlock"
 
 
-# TODO: Just config?
 class CliConfiguration(NamedTuple):
     """
-    TODO
+    Configuration set via the CLI.
     """
-    method: Method
+    action: Action
     key: str
     session_ttl: float = DEFAULT_SESSION_TTL
     log_verbosity: int = DEFAULT_LOG_VERBOSITY
@@ -78,8 +65,8 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     parser = ArgumentParser(description=DESCRIPTION)
 
     subparsers = parser.add_subparsers(dest=METHOD_CLI_PARAMETER_ACCESS, help="function")
-    subparsers.add_parser(Method.UNLOCK.value, help="release a lock")
-    lock_subparser = subparsers.add_parser(Method.LOCK.value, help="acquire a lock")
+    subparsers.add_parser(Action.UNLOCK.value, help="release a lock")
+    lock_subparser = subparsers.add_parser(Action.LOCK.value, help="acquire a lock")
     lock_subparser.add_argument(
         f"--{SESSION_TTL_CLI_LONG_PARAMETER}", type=float, default=DEFAULT_SESSION_TTL,
         help=f"time to live (ttl) in seconds of the session that will be created to hold the lock. Must be between "
@@ -100,11 +87,11 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
         session_ttl = None
     return CliConfiguration(
-        method=Method(_get_parameter_argument(METHOD_CLI_PARAMETER_ACCESS, parsed_arguments)),
+        action=Action(_get_parameter_argument(METHOD_CLI_PARAMETER_ACCESS, parsed_arguments)),
         key=_get_parameter_argument(KEY_CLI_PARAMETER, parsed_arguments),
         session_ttl=session_ttl,
         log_verbosity=_get_verbosity(parsed_arguments),
-        # TODO: If config for release, these values are meaningless! Should be differnent subclass and not need "default"
+        # TODO: If config for release, these values are meaningless! Should be differnent subclass with no need "default"
         non_blocking=_get_parameter_argument(
             NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
         timeout=_get_parameter_argument(TIMEOUT_CLI_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT))
@@ -137,28 +124,6 @@ def _get_parameter_argument(parameter: str, parsed_arguments: Namespace, default
     if value == _NO_DEFAULT_SENTINEL:
         raise KeyError(parameter)
     return value
-
-
-# FIXME: use outside of CLI
-def get_consul_configuration_from_environment() -> ConsulConfiguration:
-    """
-    Gets credentials to use Consul from the environment.
-    :return: configuration
-    :raises KeyError: if a required environment variable has not been set
-    """
-    host = os.environ[CONSUL_HOST_ENVIRONMENT_VARIABLE]
-    if "://" in host:
-        raise EnvironmentError(
-            f"Invalid host: {host}. Do not specify scheme in host - set that in {CONSUL_SCHEME_ENVIRONMENT_VARIABLE}")
-
-    return ConsulConfiguration(
-        host = host,
-        port=os.environ.get(CONSUL_PORT_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_PORT),
-        token=os.environ.get(CONSUL_TOKEN_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_TOKEN),
-        scheme=os.environ.get(CONSUL_SCHEME_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_SCHEME),
-        datacentre=os.environ.get(CONSUL_DATACENTRE_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_DATACENTRE),
-        verify=os.environ.get(CONSUL_VERIFY_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_VERIFY),
-        certificate=os.environ.get(CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_CERTIFICATE))
 
 
 def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
@@ -195,11 +160,11 @@ def main(cli_arguments: List[str], exit_handler: Callable[[int], None]=exit):
         session_ttl_in_seconds=cli_configuration.session_ttl)
 
     try:
-        if cli_configuration.method == Method.LOCK:
+        if cli_configuration.action == Action.LOCK:
             lock_information = consul_lock.acquire(
                 blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
             print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
-        elif cli_configuration.method == Method.UNLOCK:
+        elif cli_configuration.action == Action.UNLOCK:
             print(json.dumps(consul_lock.release()))
     except PermissionDeniedError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \

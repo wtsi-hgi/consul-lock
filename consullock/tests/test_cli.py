@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from consullock.cli import main, Method
+from consullock.cli import main, Action
 from consullock.common import DESCRIPTION
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
@@ -19,11 +19,11 @@ class TestCli(_EnvironmentPreservingTest):
     """
     @staticmethod
     def _locker(key: str, service: ConsulDockerisedService) -> CaptureResult:
-        return all_capture_builder.build(main)([Method.LOCK.value, key])
+        return all_capture_builder.build(main)([Action.LOCK.value, key])
 
     @staticmethod
     def _unlocker(key: str, service: ConsulDockerisedService) -> CaptureResult:
-        return all_capture_builder.build(main)([Method.UNLOCK.value, key])
+        return all_capture_builder.build(main)([Action.UNLOCK.value, key])
 
     def test_help(self):
         captured_result = all_capture_builder.build(main)(["-h"])
@@ -33,7 +33,7 @@ class TestCli(_EnvironmentPreservingTest):
 
     def test_run_without_consul_in_env(self):
         with self.assertRaises(SystemExit) as e:
-            main([Method.UNLOCK.value, TEST_KEY])
+            main([Action.UNLOCK.value, TEST_KEY])
         self.assertEqual(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, e.exception.code)
 
     def test_lock_when_unlocked(self):

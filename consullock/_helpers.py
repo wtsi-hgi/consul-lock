@@ -1,6 +1,6 @@
 from consul import Consul
 
-from consullock.models import ConsulConfiguration
+from consullock.configuration import ConsulConfiguration
 
 
 def create_consul_client(consul_configuration: ConsulConfiguration) -> Consul:

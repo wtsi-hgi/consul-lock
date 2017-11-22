@@ -3,8 +3,8 @@ import unittest
 from copy import deepcopy
 
 from capturewrap import CaptureWrapBuilder
-from consullock.cli import CONSUL_HOST_ENVIRONMENT_VARIABLE, CONSUL_PORT_ENVIRONMENT_VARIABLE
-from consullock.configuration import DEFAULT_CONSUL_PORT
+from consullock.configuration import DEFAULT_CONSUL_PORT, CONSUL_HOST_ENVIRONMENT_VARIABLE, \
+    CONSUL_PORT_ENVIRONMENT_VARIABLE
 from useintest.predefined.consul import ConsulServiceController, ConsulDockerisedService
 
 TEST_KEY = "hello"

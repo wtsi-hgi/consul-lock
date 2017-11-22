@@ -13,15 +13,3 @@ class ConsulLockInformation:
         self.session_id = session_id
         self.created = created
 
-
-class ConsulConfiguration(NamedTuple):
-    """
-    Configuration for Consul server.
-    """
-    host: str
-    port: int = DEFAULT_CONSUL_PORT
-    token: str = DEFAULT_CONSUL_TOKEN
-    scheme: str = DEFAULT_CONSUL_SCHEME
-    datacentre: str = DEFAULT_CONSUL_DATACENTRE
-    verify: bool = DEFAULT_CONSUL_VERIFY
-    certificate: str = DEFAULT_CONSUL_CERTIFICATE

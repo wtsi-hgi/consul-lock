@@ -11,10 +11,10 @@ from timeout_decorator import timeout_decorator
 from consullock._helpers import create_consul_client
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_LOCK_TIMEOUT_IN_SECONDS, \
-    MAX_LOCK_TIMEOUT_IN_SECONDS
+    MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
 from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
-from consullock.models import ConsulLockInformation, ConsulConfiguration
+from consullock.models import ConsulLockInformation
 
 logger = create_logger(__name__)
 
