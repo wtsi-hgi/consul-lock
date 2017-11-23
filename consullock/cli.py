@@ -91,6 +91,8 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     try:
         parsed_arguments = parser.parse_args(arguments)
     except SystemExit as e:
+        if e.code == SUCCESS_EXIT_CODE:
+            raise e
         raise InvalidCliArgumentError() from e
 
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
