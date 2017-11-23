@@ -62,6 +62,7 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     :param arguments: CLI arguments
     :return: the configuration
     """
+    # TODO: The argument parser should be static
     parser = ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
         f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
@@ -87,7 +88,11 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
         subparser.add_argument(
             KEY_CLI_PARAMETER, type=str, help="the lock identifier")
 
-    parsed_arguments = parser.parse_args(arguments)
+    try:
+        parsed_arguments = parser.parse_args(arguments)
+    except SystemExit as e:
+        raise InvalidCliArgumentError() from e
+
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
         session_ttl = None
