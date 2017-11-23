@@ -12,8 +12,8 @@ from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRON
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, _EnvironmentPreservingTest, all_capture_builder, set_consul_env
-from consullock.tests.test_locks import lock_when_unlocked, test_lock_when_locked, \
-    test_lock_with_blocking_when_locked, LockerCallable
+from consullock.tests.test_locks import test_lock_when_unlocked, LockerCallable, test_lock_when_locked_non_blocking, \
+    test_lock_when_locked_blocking
 
 
 class TestCli(_EnvironmentPreservingTest):
@@ -48,7 +48,7 @@ class TestCli(_EnvironmentPreservingTest):
         self.assertEqual(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, e.exception.code)
 
     def test_lock_when_unlocked(self):
-        lock_result, unlock_result = lock_when_unlocked(self, TestCli._create_locker(), TestCli._unlocker)
+        lock_result, unlock_result = test_lock_when_unlocked(self, TestCli._create_locker(), TestCli._unlocker)
 
         self.assertIsInstance(lock_result.exception, SystemExit)
         self.assertEqual(SUCCESS_EXIT_CODE, lock_result.exception.code)
@@ -57,11 +57,11 @@ class TestCli(_EnvironmentPreservingTest):
 
         self.assertTrue(json.loads(unlock_result.stdout))
 
-    def test_lock_when_locked(self):
-        test_lock_when_locked(self, TestCli._create_locker())
+    def test_lock_when_locked_non_blocking(self):
+        test_lock_when_locked_non_blocking(self, TestCli._create_locker())
 
-    def test_lock_when_locked_with_blocking(self):
-        lock_result = test_lock_with_blocking_when_locked(
+    def test_lock_when_locked_blocking(self):
+        lock_result = test_lock_when_locked_blocking(
             self, TestCli._create_locker(action_args=[f"--{NON_BLOCKING_CLI_LONG_PARAMETER}"]))
         self.assertEqual(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, lock_result.exception.code)
         self.assertIsNone(json.loads(lock_result.stdout))

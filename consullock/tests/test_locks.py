@@ -17,7 +17,7 @@ _DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: [key]
 _DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=service.create_consul_client())
 
 
-def lock_when_unlocked(test: TestCase, locker: LockerCallable, unlocker: UnlockerCallable) \
+def test_lock_when_unlocked(test: TestCase, locker: LockerCallable, unlocker: UnlockerCallable) \
         -> Tuple[CaptureResult, CaptureResult]:
     """
     Tests getting a lock when it is not locked.
@@ -32,40 +32,51 @@ def lock_when_unlocked(test: TestCase, locker: LockerCallable, unlocker: Unlocke
         return lock_result, unlock_result
 
 
-def test_lock_when_locked(test: TestCase, locker: LockerCallable):
+def test_lock_when_locked(test: TestCase, locker: LockerCallable, max_lock_block: float=0.5):
     """
     Tests getting a lock when it is already locked.
     :param test: the test case running the test
     :param locker: method that locks Consul
     :param unlocker: method that unlocks Consul
+    :param max_lock_block: maximum amount of time (in seconds) to block for
+    :raise timeout_decorator.TimeoutError: if block on lock times out
     """
     with ConsulServiceController().start_service() as service:
         consul_lock = ConsulLock(TEST_KEY, consul_client=service.create_consul_client())
         assert consul_lock.acquire(TEST_KEY)
 
-        @timeout_decorator.timeout(0.5)
+        @timeout_decorator.timeout(max_lock_block)
         def get_lock_with_timeout():
-            result = locker(TEST_KEY, service)
-            if isinstance(result.exception, timeout_decorator.TimeoutError):
-                raise result.exception
+            return locker(TEST_KEY, service)
 
         try:
-            test.assertRaises(timeout_decorator.TimeoutError, get_lock_with_timeout)
+            return get_lock_with_timeout()
+        except Exception as e:
+            return CaptureResult(exception=e)
         finally:
             consul_lock.teardown()
 
 
-def test_lock_with_blocking_when_locked(test: TestCase, locker: LockerCallable) -> CaptureResult:
+def test_lock_when_locked_non_blocking(test: TestCase, locker: LockerCallable):
     """
     TODO
     :param test:
     :param locker:
     :return:
     """
-    with ConsulServiceController().start_service() as service:
-        consul_lock = ConsulLock(TEST_KEY, consul_client=service.create_consul_client())
-        assert consul_lock.acquire(TEST_KEY)
-        return locker(TEST_KEY, service)
+    lock_result = test_lock_when_locked(test, locker)
+    test.assertIsInstance(lock_result.exception, timeout_decorator.TimeoutError)
+
+
+def test_lock_when_locked_blocking(test: TestCase, locker: LockerCallable) -> CaptureResult:
+    """
+    Tests doing a non-blocking lock action when the lock has already been taken.
+    :param test: the test case running the test
+    :param locker: method that locks Consul in such a way that it is set not to block
+    :param unlocker: method that unlocks Consul
+    :return:
+    """
+    return test_lock_when_locked(test, locker)
 
 
 class TestConsulLock(_EnvironmentPreservingTest):
@@ -92,15 +103,15 @@ class TestConsulLock(_EnvironmentPreservingTest):
         return all_capture_builder.build(consul_lock.release)()
 
     def test_lock_when_unlocked(self):
-        lock_result, unlock_result = lock_when_unlocked(self, TestConsulLock._create_locker(), TestConsulLock._unlocker)
+        lock_result, unlock_result = test_lock_when_unlocked(self, TestConsulLock._create_locker(), TestConsulLock._unlocker)
         self.assertIsInstance(lock_result.return_value, ConsulLockInformation)
         self.assertTrue(unlock_result.return_value)
 
-    def test_lock_when_locked(self):
-        test_lock_when_locked(self, TestConsulLock._create_locker())
+    def test_lock_when_locked_non_blocking(self):
+        test_lock_when_locked_non_blocking(self, TestConsulLock._create_locker())
 
-    def test_lock_when_locked_with_blocking(self):
-        lock_result = test_lock_with_blocking_when_locked(
+    def test_lock_when_locked_blocking(self):
+        lock_result = test_lock_when_locked_blocking(
             self, TestConsulLock._create_locker(acquire_kwargs=dict(blocking=False)))
         self.assertIsNone(lock_result.return_value)
 
