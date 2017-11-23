@@ -23,5 +23,6 @@ setup(
         "console_scripts": [
             f"{EXECUTABLE_NAME}=consullock.cli:main"
         ]
-    }
+    },
+    zip_safe=True
 )
