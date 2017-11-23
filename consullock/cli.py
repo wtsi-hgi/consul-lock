@@ -3,7 +3,7 @@ import logging
 import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
-from typing import NamedTuple, List, Any, Callable
+from typing import NamedTuple, List, Any
 
 from consullock._logging import create_logger
 from consullock.common import DESCRIPTION, PACKAGE_NAME
