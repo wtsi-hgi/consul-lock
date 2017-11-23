@@ -1,6 +1,6 @@
 import os
 import unittest
-from abc import abstractmethod
+from abc import abstractmethod, ABCMeta
 from copy import deepcopy
 from typing import Callable, Tuple, Any
 
@@ -9,7 +9,8 @@ from timeout_decorator import timeout_decorator
 from useintest.predefined.consul import ConsulServiceController, ConsulDockerisedService
 
 from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS
-from consullock.locks import ConsulLock, ConsulLockBaseError
+from consullock.locks import ConsulLock
+from consullock.exceptions import ConsulLockBaseError
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY
 
@@ -21,19 +22,21 @@ DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=ser
 DEFAULT_LOCK_ACQUIRE_TIMEOUT = 0.5
 
 MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR = MIN_LOCK_TIMEOUT_IN_SECONDS * 5.0
+DOUBLE_SLASH_KEY = "my//key"
 
 
-def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable) \
+def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable, key: str=TEST_KEY) \
         -> Tuple[CaptureResult, CaptureResult]:
     """
     Tests getting a lock when it is not locked.
     :param locker: method that locks Consul
     :param unlocker: method that unlocks Consul
+    :param key: lock key to use
     :return: tuple where the first element is the result of the lock and the second is that of a subsequent unlock
     """
     with ConsulServiceController().start_service() as service:
-        lock_result = locker(TEST_KEY, service)
-        unlock_result = unlocker(TEST_KEY, service)
+        lock_result = locker(key, service)
+        unlock_result = unlocker(key, service)
         return lock_result, unlock_result
 
 
@@ -88,7 +91,7 @@ class ConsulLockTestTimeoutError(ConsulLockBaseError):
     """
 
 
-class TestLock(unittest.TestCase):
+class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
     """
     TODO
     """
@@ -128,4 +131,11 @@ class TestLock(unittest.TestCase):
     def test_set_session_ttl(self):
         """
         TODO
+        """
+
+    @abstractmethod
+    def test_lock_with_double_slash(self):
+        """
+        TODO
+        :return:
         """

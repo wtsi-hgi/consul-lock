@@ -4,16 +4,17 @@ from typing import Callable, List, Dict, Any
 from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService
 
-from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS
+from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
+from consullock.exceptions import InvalidKeyError, DoubleSlashKeyError
 from consullock.locks import ConsulLock
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import all_capture_builder
-from consullock.tests._test_locks import TestLock, DEFAULT_LOCK_INIT_ARGS_GENERATOR, DEFAULT_LOCK_INIT_KWARGS_GENERATOR, \
+from consullock.tests._test_locks import BaseLockTest, DEFAULT_LOCK_INIT_ARGS_GENERATOR, DEFAULT_LOCK_INIT_KWARGS_GENERATOR, \
     LockerCallable, lock_when_unlocked, ConsulLockTestTimeoutError, lock_when_locked, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
-    lock_twice, MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR
+    lock_twice, MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, DOUBLE_SLASH_KEY
 
 
-class TestConsulLock(TestLock):
+class TestConsulLock(BaseLockTest):
     """
     Tests for `ConsulLock`.
     """
@@ -67,6 +68,11 @@ class TestConsulLock(TestLock):
         )
         self.assertIsInstance(lock_result.return_value, ConsulLockInformation)
 
+    def test_lock_with_double_slash(self):
+        self.assertRaises(DoubleSlashKeyError, ConsulLock, DOUBLE_SLASH_KEY, consul_configuration=ConsulConfiguration(""))
+
+
+del BaseLockTest
 
 if __name__ == "__main__":
     unittest.main()

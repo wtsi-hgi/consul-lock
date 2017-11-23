@@ -11,9 +11,11 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, \
-    PACKAGE_NAME, DESCRIPTION
+    PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
-from consullock.locks import ConsulLock, PermissionDeniedConsulError, LockAcquireTimeoutError
+from consullock.locks import ConsulLock
+from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, InvalidKeyError, \
+    DoubleSlashKeyError
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
@@ -161,10 +163,16 @@ def main(cli_arguments: List[str]):
         logger.error(e)
         exit(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
 
-    consul_lock = ConsulLock(
-        key=cli_configuration.key,
-        consul_configuration=consul_configuration,
-        session_ttl_in_seconds=cli_configuration.session_ttl)
+    try:
+        consul_lock = ConsulLock(
+            key=cli_configuration.key,
+            consul_configuration=consul_configuration,
+            session_ttl_in_seconds=cli_configuration.session_ttl)
+    except DoubleSlashKeyError as e:
+        logger.debug(e)
+        logger.error(f"Double slashes \"//\" in keys get converted into single slashes \"/\" - please use a "
+                     f"single slash if this is intended: {cli_configuration.key}")
+        exit(INVALID_KEY_EXIT_CODE)
 
     try:
         if cli_configuration.action == Action.LOCK:
@@ -175,6 +183,7 @@ def main(cli_arguments: List[str]):
                 logger.debug(e)
                 print(json.dumps(None))
                 exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
+
             print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
 
             if lock_information is None:
@@ -186,8 +195,8 @@ def main(cli_arguments: List[str]):
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly (currently set to \"{consul_configuration.token}\")?"
-        logger.error(error_message)
         logger.debug(e)
+        logger.error(error_message)
         exit(PERMISSION_DENIED_EXIT_CODE)
 
     exit(SUCCESS_EXIT_CODE)

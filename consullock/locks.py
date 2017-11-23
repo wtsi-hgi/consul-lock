@@ -15,45 +15,12 @@ from consullock._helpers import create_consul_client
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_LOCK_TIMEOUT_IN_SECONDS, \
     MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
+from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, UnusableStateException, \
+    ConsulConnectionError, PermissionDeniedConsulError, SessionLostConsulError, InvalidKeyError, DoubleSlashKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 
 logger = create_logger(__name__)
-
-
-class ConsulLockBaseError(Exception):
-    """
-    TODO
-    """
-
-
-class LockAcquireTimeoutError(ConsulLockBaseError):
-    """
-    Raised if the timeout to get a lock expires.
-    """
-
-class UnusableStateException(ConsulLockBaseError):
-    """
-    Raised upon attempt to use instance that is in an unusable state.
-    """
-
-
-class ConsulConnectionError(ConsulLockBaseError):
-    """
-    Wrapped exception from the underlying library dealing with Consul.
-    """
-
-
-class PermissionDeniedConsulError(ConsulConnectionError):
-    """
-    Raised when Consul has refused to act due to a permission error.
-    """
-
-
-class SessionLostConsulError(ConsulConnectionError):
-    """
-    Raised if a Consul session is lost in the middle of an operation.
-    """
 
 
 def _exception_converter(callable: Callable) -> Callable:
@@ -104,6 +71,17 @@ class ConsulLock:
                 f"Invalid session timeout: {session_timeout_in_seconds}. If defined, the timeout must be between "
                 f"{MIN_LOCK_TIMEOUT_IN_SECONDS} and {MAX_LOCK_TIMEOUT_IN_SECONDS} (inclusive).")
 
+    @staticmethod
+    def validate_key(key: str):
+        """
+        TODO
+        :param key:
+        :return:
+        :raises InvalidKeyError:
+        """
+        if "//" in key:
+            raise DoubleSlashKeyError(key)
+
     def __init__(self, key: str, consul_configuration: ConsulConfiguration=None, session_ttl_in_seconds: float=None,
                  lock_poll_interval_generator: Callable[[], float]= DEFAULT_LOCK_POLL_INTERVAL_GENERATOR,
                  consul_client: Consul = None):
@@ -114,6 +92,8 @@ class ConsulLock:
         :param session_ttl_in_seconds:
         :param lock_poll_interval_generator:
         :param consul_client:
+        :raises ValueError: if the `session_ttl_in_seconds` is not valid
+        :raises InvalidKeyError: if the `key` is not valid
         """
         if session_ttl_in_seconds is not None:
             ConsulLock.validate_session_ttl(session_ttl_in_seconds)
@@ -121,6 +101,8 @@ class ConsulLock:
             raise ValueError("Must either define `consul_configuration` or `consul_client`, not both")
         if consul_configuration is None and consul_client is None:
             raise ValueError("Either `consul_configuration` xor `consul_client` must be given")
+
+        ConsulLock.validate_key(key)
 
         self.key = key
         self.consul_client = consul_client or create_consul_client(consul_configuration)

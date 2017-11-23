@@ -8,17 +8,19 @@ from useintest.predefined.consul import ConsulDockerisedService
 from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
     SESSION_TTL_CLI_LONG_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
-    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS
+    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS, \
+    INVALID_KEY_EXIT_CODE
+from consullock.exceptions import DoubleSlashKeyError
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, all_capture_builder, set_consul_env
-from consullock.tests._test_locks import TestLock, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
-    MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR
-from consullock.tests.test_locks import lock_when_unlocked, LockerCallable, lock_when_locked, \
-    ConsulLockTestTimeoutError, lock_twice
+from consullock.tests._test_locks import BaseLockTest, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
+    MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, DOUBLE_SLASH_KEY
+from consullock.tests.test_locks import lock_when_unlocked, LockerCallable, lock_when_locked, lock_twice, \
+    ConsulLockTestTimeoutError
 
 
-class TestCli(TestLock):
+class TestCli(BaseLockTest):
     """
     Tests for the CLI.
     """
@@ -86,6 +88,13 @@ class TestCli(TestLock):
         self.assertIsInstance(
             json.loads(lock_result.stdout, cls=ConsulLockInformationJSONDecoder), ConsulLockInformation)
 
+    def test_lock_with_double_slash(self):
+        lock_result, unlock_result = lock_when_unlocked(TestCli._create_locker(), TestCli._unlocker, DOUBLE_SLASH_KEY)
+        self.assertEqual(INVALID_KEY_EXIT_CODE, lock_result.exception.code)
+        self.assertEqual(INVALID_KEY_EXIT_CODE, unlock_result.exception.code)
+
+
+del BaseLockTest
 
 if __name__ == "__main__":
     unittest.main()
