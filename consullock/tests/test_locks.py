@@ -15,6 +15,7 @@ UnlockerCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
 
 _DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: [key]
 _DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=service.create_consul_client())
+_DEFAULT_LOCK_ACQUIRE_TIMEOUT = 0.5
 
 
 def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable) \
@@ -31,7 +32,7 @@ def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable) \
         return lock_result, unlock_result
 
 
-def lock_when_locked(locker: LockerCallable, max_lock_block: float=0.5):
+def lock_when_locked(locker: LockerCallable, max_lock_block: float=_DEFAULT_LOCK_ACQUIRE_TIMEOUT):
     """
     Tests getting a lock when it is already locked.
     :param locker: method that locks Consul
@@ -91,10 +92,10 @@ class TestConsulLock(_EnvironmentPreservingTest):
         lock_result = lock_when_locked(TestConsulLock._create_locker(acquire_kwargs=dict(blocking=False)))
         self.assertIsNone(lock_result.return_value)
 
-    # def test_lock_when_locked_blocking_timeout(self):
-    #     lock_result = test_lock_when_locked(
-    #         self, TestConsulLock._create_locker(acquire_kwargs=dict(=False)))
-    #     self.assertIsNone(lock_result.return_value)
+    def test_lock_when_locked_with_timeout(self):
+        lock_result = lock_when_locked(TestConsulLock._create_locker(
+            acquire_kwargs=dict(timeout=_DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2)))
+        self.assertIsNone(lock_result.return_value)
 
 
 if __name__ == "__main__":

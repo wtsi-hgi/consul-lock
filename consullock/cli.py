@@ -12,15 +12,14 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE
-from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
-from consullock.locks import ConsulLock, PermissionDeniedError
+from consullock.locks import ConsulLock, PermissionDeniedError, ConsulLockAcquireTimeoutError
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
 VERBOSE_CLI_SHORT_PARAMETER = "v"
 NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
-TIMEOUT_CLI_PARAMETER = "timeout"
+TIMEOUT_CLI_lONG_PARAMETER = "timeout"
 METHOD_CLI_PARAMETER_ACCESS = "method"
 NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE = 0
 
@@ -81,7 +80,7 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
         f"--{NON_BLOCKING_CLI_LONG_PARAMETER}", action="store_true",
         default=DEFAULT_NON_BLOCKING, help="do not block if cannot lock straight away")
     lock_subparser.add_argument(
-        f"--{TIMEOUT_CLI_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
+        f"--{TIMEOUT_CLI_lONG_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
         help="give up trying to acquire the key after this many seconds (where 0 is never)")
 
     for subparser in [unlock_subparser, lock_subparser]:
@@ -106,7 +105,7 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
         # TODO: If config for release, these values are meaningless! Should be differnent subclass with no need "default"
         non_blocking=_get_parameter_argument(
             NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
-        timeout=_get_parameter_argument(TIMEOUT_CLI_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT))
+        timeout=_get_parameter_argument(TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT))
 
 
 def _get_verbosity(parsed_arguments: Namespace) -> int:
@@ -172,8 +171,9 @@ def main(cli_arguments: List[str]):
             try:
                 lock_information = consul_lock.acquire(
                     blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
-            except ConsulLockAcquireTimeout as e:
+            except ConsulLockAcquireTimeoutError as e:
                 logger.debug(e)
+                print(json.dumps(None))
                 exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
             print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
 

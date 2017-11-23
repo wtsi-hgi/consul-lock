@@ -15,14 +15,25 @@ from consullock._helpers import create_consul_client
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_LOCK_TIMEOUT_IN_SECONDS, \
     MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
-from consullock.exceptions import ConsulLockAcquireTimeout
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 
 logger = create_logger(__name__)
 
 
-class ConsulError(BaseException):
+class ConsulLockBaseError(Exception):
+    """
+    TODO
+    """
+
+
+class ConsulLockAcquireTimeoutError(ConsulLockBaseError):
+    """
+    Raised if the timeout to get a lock expires.
+    """
+
+
+class ConsulError(ConsulLockBaseError):
     """
     Wrapped exception from the underlying library dealing with Consul.
     """
@@ -49,6 +60,8 @@ def _exception_converter(callable: Callable) -> Callable:
     def wrapped(*args, **kwargs) -> Any:
         try:
             return callable(*args, **kwargs)
+        except ConsulLockBaseError as e:
+            raise e
         except ACLPermissionDenied as e:
             raise PermissionDeniedError() from e
         except ConsulException as e:
@@ -56,8 +69,6 @@ def _exception_converter(callable: Callable) -> Callable:
                 raise SessionLostError() from e
             else:
                 raise ConsulError() from e
-        except BaseException as e:
-            raise e
         except Exception as e:
             raise ConsulError() from e
     return wrapped
@@ -120,8 +131,8 @@ class ConsulLock:
         self._teardown_called = False
         self._teardown_lock = Lock()
 
-    @_raise_if_teardown_called
     @_exception_converter
+    @_raise_if_teardown_called
     def acquire(self, blocking: bool=True, timeout: float=None) -> Optional[ConsulLockInformation]:
         """
         TODO
@@ -134,7 +145,7 @@ class ConsulLock:
         self._acquiring_session_ids.add(session_id)
         logger.info(f"Created session with ID: {session_id}")
 
-        @timeout_decorator.timeout(timeout, timeout_exception=ConsulLockAcquireTimeout)
+        @timeout_decorator.timeout(timeout, timeout_exception=ConsulLockAcquireTimeoutError)
         def _acquire() -> ConsulLockInformation:
             while True:
                 logger.debug("Going to acquire lock")
@@ -156,8 +167,8 @@ class ConsulLock:
 
         return lock_information
 
-    @_raise_if_teardown_called
     @_exception_converter
+    @_raise_if_teardown_called
     def release(self) -> bool:
         """
         Release the lock.
