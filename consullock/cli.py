@@ -57,13 +57,11 @@ class CliConfiguration(NamedTuple):
     timeout: float = DEFAULT_TIMEOUT
 
 
-def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
+def _create_parser() -> ArgumentParser:
     """
-    Parses the configuration passed in via command line arguments.
-    :param arguments: CLI arguments
-    :return: the configuration
+    TODO
+    :return:
     """
-    # TODO: The argument parser should be static
     parser = ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
         f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
@@ -89,12 +87,20 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
         subparser.add_argument(
             KEY_CLI_PARAMETER, type=str, help="the lock identifier")
 
+
+def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
+    """
+    Parses the configuration passed in via command line arguments.
+    :param arguments: CLI arguments
+    :return: the configuration
+    """
     try:
-        parsed_arguments = parser.parse_args(arguments)
+        parsed_arguments = _create_parser().parse_args(arguments)
     except SystemExit as e:
         if e.code == SUCCESS_EXIT_CODE:
             raise e
         raise InvalidCliArgumentError() from e
+
 
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
