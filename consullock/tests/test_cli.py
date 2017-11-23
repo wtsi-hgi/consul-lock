@@ -14,7 +14,7 @@ from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, _EnvironmentPreservingTest, all_capture_builder, set_consul_env
 from consullock.tests.test_locks import lock_when_unlocked, LockerCallable, lock_when_locked, \
-    _DEFAULT_LOCK_ACQUIRE_TIMEOUT
+    _DEFAULT_LOCK_ACQUIRE_TIMEOUT, ConsulLockTestTimeoutError
 
 
 class TestCli(_EnvironmentPreservingTest):
@@ -60,7 +60,7 @@ class TestCli(_EnvironmentPreservingTest):
 
     def test_lock_when_locked_blocking(self):
         lock_result = lock_when_locked(TestCli._create_locker())
-        self.assertIsInstance(lock_result.exception, timeout_decorator.TimeoutError)
+        self.assertIsInstance(lock_result.exception, ConsulLockTestTimeoutError)
 
     def test_lock_when_locked_non_blocking(self):
         lock_result = lock_when_locked(TestCli._create_locker(action_args=[f"--{NON_BLOCKING_CLI_LONG_PARAMETER}"]))

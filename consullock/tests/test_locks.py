@@ -5,7 +5,7 @@ from unittest import TestCase
 from capturewrap import CaptureResult
 from timeout_decorator import timeout_decorator
 
-from consullock.locks import ConsulLock
+from consullock.locks import ConsulLock, ConsulLockBaseError
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import _EnvironmentPreservingTest, set_consul_env, TEST_KEY, all_capture_builder
 from useintest.predefined.consul import ConsulServiceController, ConsulDockerisedService
@@ -16,6 +16,12 @@ UnlockerCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
 _DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: [key]
 _DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=service.create_consul_client())
 _DEFAULT_LOCK_ACQUIRE_TIMEOUT = 0.5
+
+
+class ConsulLockTestTimeoutError(ConsulLockBaseError):
+    """
+    TODO
+    """
 
 
 def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable) \
@@ -44,7 +50,7 @@ def lock_when_locked(locker: LockerCallable, max_lock_block: float=_DEFAULT_LOCK
         consul_lock = ConsulLock(TEST_KEY, consul_client=service.create_consul_client())
         assert consul_lock.acquire(TEST_KEY)
 
-        @timeout_decorator.timeout(max_lock_block)
+        @timeout_decorator.timeout(max_lock_block, timeout_exception=ConsulLockTestTimeoutError)
         def get_lock_with_timeout():
             return locker(TEST_KEY, service)
 
@@ -86,7 +92,7 @@ class TestConsulLock(_EnvironmentPreservingTest):
 
     def test_lock_when_locked_blocking(self):
         lock_result = lock_when_locked(TestConsulLock._create_locker())
-        self.assertIsInstance(lock_result.exception, timeout_decorator.TimeoutError)
+        self.assertIsInstance(lock_result.exception, ConsulLockTestTimeoutError)
 
     def test_lock_when_locked_non_blocking(self):
         lock_result = lock_when_locked(TestConsulLock._create_locker(acquire_kwargs=dict(blocking=False)))
