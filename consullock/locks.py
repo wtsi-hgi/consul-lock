@@ -16,7 +16,8 @@ from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_LOCK_TIMEOUT_IN_SECONDS, \
     MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
 from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, UnusableStateException, \
-    ConsulConnectionError, PermissionDeniedConsulError, SessionLostConsulError, InvalidKeyError, DoubleSlashKeyError
+    ConsulConnectionError, PermissionDeniedConsulError, SessionLostConsulError, InvalidKeyError, DoubleSlashKeyError, \
+    InvalidSessionTtlValueError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 
@@ -63,11 +64,11 @@ class ConsulLock:
         """
         Validates the given session timeout, raising a `ValueError` if it is invalid.
         :param session_timeout_in_seconds: the timeout to validate
-        :raises ValueError: if the timeout is invalid
+        :raises InvalidSessionTtlValueError: if the timeout is invalid
         """
         if session_timeout_in_seconds < MIN_LOCK_TIMEOUT_IN_SECONDS \
                 or session_timeout_in_seconds > MAX_LOCK_TIMEOUT_IN_SECONDS:
-            raise ValueError(
+            raise InvalidSessionTtlValueError(
                 f"Invalid session timeout: {session_timeout_in_seconds}. If defined, the timeout must be between "
                 f"{MIN_LOCK_TIMEOUT_IN_SECONDS} and {MAX_LOCK_TIMEOUT_IN_SECONDS} (inclusive).")
 
@@ -92,7 +93,7 @@ class ConsulLock:
         :param session_ttl_in_seconds:
         :param lock_poll_interval_generator:
         :param consul_client:
-        :raises ValueError: if the `session_ttl_in_seconds` is not valid
+        :raises InvalidSessionTtlValueError: if the `session_ttl_in_seconds` is not valid
         :raises InvalidKeyError: if the `key` is not valid
         """
         if session_ttl_in_seconds is not None:

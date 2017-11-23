@@ -11,11 +11,11 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, \
-    PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE
+    PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
 from consullock.locks import ConsulLock
 from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, InvalidKeyError, \
-    DoubleSlashKeyError
+    DoubleSlashKeyError, InvalidEnvironmentVariableError, InvalidSessionTtlValueError
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
@@ -159,7 +159,7 @@ def main(cli_arguments: List[str]):
     except KeyError as e:
         logger.error(f"Cannot connect to Consul - the environment variable {e.args[0]} must be set")
         exit(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE)
-    except EnvironmentError as e:
+    except InvalidEnvironmentVariableError as e:
         logger.error(e)
         exit(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
 
@@ -168,6 +168,9 @@ def main(cli_arguments: List[str]):
             key=cli_configuration.key,
             consul_configuration=consul_configuration,
             session_ttl_in_seconds=cli_configuration.session_ttl)
+    except InvalidSessionTtlValueError as e:
+        logger.error(e)
+        exit(INVALID_SESSION_TTL_EXIT_CODE)
     except DoubleSlashKeyError as e:
         logger.debug(e)
         logger.error(f"Double slashes \"//\" in keys get converted into single slashes \"/\" - please use a "
@@ -181,12 +184,14 @@ def main(cli_arguments: List[str]):
                     blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
             except LockAcquireTimeoutError as e:
                 logger.debug(e)
+                logger.error(f"Timed out whilst waiting to acquire lock: {cli_configuration.key}")
                 print(json.dumps(None))
                 exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
 
             print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
 
             if lock_information is None:
+                logger.error(f"Unable to acquire lock: {cli_configuration.key}")
                 exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
 
         elif cli_configuration.action == Action.UNLOCK:

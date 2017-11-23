@@ -9,7 +9,7 @@ from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOU
     SESSION_TTL_CLI_LONG_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS, \
-    INVALID_KEY_EXIT_CODE
+    INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE
 from consullock.exceptions import DoubleSlashKeyError
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
@@ -39,17 +39,6 @@ class TestCli(BaseLockTest):
     def _unlocker(key: str, service: ConsulDockerisedService) -> CaptureResult:
         set_consul_env(service)
         return all_capture_builder.build(main)([Action.UNLOCK.value, key])
-
-    def test_help(self):
-        captured_result = all_capture_builder.build(main)(["-h"])
-        self.assertIsInstance(captured_result.exception, SystemExit)
-        self.assertEqual(SUCCESS_EXIT_CODE, captured_result.exception.code)
-        self.assertIn(DESCRIPTION, captured_result.stdout)
-
-    def test_run_without_consul_in_env(self):
-        with self.assertRaises(SystemExit) as e:
-            main([Action.UNLOCK.value, TEST_KEY])
-        self.assertEqual(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, e.exception.code)
 
     def test_lock_when_unlocked(self):
         lock_result, unlock_result = lock_when_unlocked(TestCli._create_locker(), TestCli._unlocker)
@@ -92,6 +81,25 @@ class TestCli(BaseLockTest):
         lock_result, unlock_result = lock_when_unlocked(TestCli._create_locker(), TestCli._unlocker, DOUBLE_SLASH_KEY)
         self.assertEqual(INVALID_KEY_EXIT_CODE, lock_result.exception.code)
         self.assertEqual(INVALID_KEY_EXIT_CODE, unlock_result.exception.code)
+
+    def test_lock_with_invalid_session_ttl(self):
+        lock_result, _ = lock_when_unlocked(
+            TestCli._create_locker(
+                action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", str(MIN_LOCK_TIMEOUT_IN_SECONDS - 1)]),
+            TestCli._unlocker)
+        self.assertEqual(INVALID_SESSION_TTL_EXIT_CODE, lock_result.exception.code)
+
+    def test_help(self):
+        captured_result = all_capture_builder.build(main)(["-h"])
+        self.assertIsInstance(captured_result.exception, SystemExit)
+        self.assertEqual(SUCCESS_EXIT_CODE, captured_result.exception.code)
+        self.assertIn(DESCRIPTION, captured_result.stdout)
+
+    def test_run_without_consul_in_env(self):
+        with self.assertRaises(SystemExit) as e:
+            main([Action.UNLOCK.value, TEST_KEY])
+        self.assertEqual(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, e.exception.code)
+
 
 
 del BaseLockTest

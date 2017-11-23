@@ -139,3 +139,10 @@ class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
         TODO
         :return:
         """
+
+    @abstractmethod
+    def test_lock_with_invalid_session_ttl(self):
+        """
+        TODO
+        :return:
+        """

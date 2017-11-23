@@ -47,3 +47,18 @@ class DoubleSlashKeyError(InvalidKeyError):
     """
     Raised if a key uses double slash.
     """
+
+
+class InvalidEnvironmentVariableError(ConsulLockBaseError):
+    """
+    TODO
+    """
+    def __init__(self, message: str, variable: str):
+        super().__init__(message)
+        self.variable = variable
+
+
+class InvalidSessionTtlValueError(ConsulLockBaseError):
+    """
+    TODO
+    """
