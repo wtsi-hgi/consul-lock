@@ -15,7 +15,7 @@ from consullock._helpers import create_consul_client
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_LOCK_TIMEOUT_IN_SECONDS, \
     MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
-from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, UnusableStateException, \
+from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, UnusableStateError, \
     ConsulConnectionError, PermissionDeniedConsulError, SessionLostConsulError, InvalidKeyError, DoubleSlashKeyError, \
     InvalidSessionTtlValueError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
@@ -50,7 +50,7 @@ def _raise_if_teardown_called(callable: Callable) -> Callable:
     """
     def wrapper(consul_lock: "ConsulLock", *args, **kwargs):
         if consul_lock._teardown_called:
-            raise UnusableStateException("Teardown has been called on the lock manager")
+            raise UnusableStateError("Teardown has been called on the lock manager")
         return callable(consul_lock, *args, **kwargs)
     return wrapper
 

@@ -10,7 +10,7 @@ class LockAcquireTimeoutError(ConsulLockBaseError):
     """
 
 
-class UnusableStateException(ConsulLockBaseError):
+class UnusableStateError(ConsulLockBaseError):
     """
     Raised upon attempt to use instance that is in an unusable state.
     """

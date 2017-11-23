@@ -2,10 +2,10 @@ import unittest
 from typing import Callable, List, Dict, Any
 
 from capturewrap import CaptureResult
-from useintest.predefined.consul import ConsulDockerisedService
+from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
 from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
-from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError
+from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError
 from consullock.locks import ConsulLock
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import all_capture_builder, TEST_KEY
@@ -79,6 +79,11 @@ class TestConsulLock(BaseLockTest):
         self.assertRaises(
             InvalidSessionTtlValueError, ConsulLock, TEST_KEY, session_ttl_in_seconds=MIN_LOCK_TIMEOUT_IN_SECONDS - 1,
             consul_configuration=_DUMMY_CONSUL_CONFIGURATION)
+
+    def test_cannot_use_after_teardown(self):
+        consul_lock = ConsulLock(TEST_KEY, _DUMMY_CONSUL_CONFIGURATION)
+        consul_lock.teardown()
+        self.assertRaises(UnusableStateError, consul_lock.acquire)
 
 
 del BaseLockTest
