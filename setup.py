@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-from consullock.common import PACKAGE_NAME, DESCRIPTION, EXECUTABLE_NAME
+from consullock.configuration import PACKAGE_NAME, DESCRIPTION, EXECUTABLE_NAME
 
 try:
     from pypandoc import convert

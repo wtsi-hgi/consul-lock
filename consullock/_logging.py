@@ -1,6 +1,6 @@
 import logging
 from logging import Logger, StreamHandler
-from consullock.common import PACKAGE_NAME
+from consullock.configuration import PACKAGE_NAME
 
 
 def create_logger(name: str) -> Logger:

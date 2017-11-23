@@ -6,14 +6,14 @@ from enum import Enum, unique
 from typing import NamedTuple, List, Any
 
 from consullock._logging import create_logger
-from consullock.common import DESCRIPTION, PACKAGE_NAME
 from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, \
     DEFAULT_TIMEOUT, SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
-    get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE
+    get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, \
+    PACKAGE_NAME, DESCRIPTION
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
-from consullock.locks import ConsulLock, PermissionDeniedError, ConsulLockAcquireTimeoutError
+from consullock.locks import ConsulLock, PermissionDeniedConsulError, LockAcquireTimeoutError
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
@@ -171,7 +171,7 @@ def main(cli_arguments: List[str]):
             try:
                 lock_information = consul_lock.acquire(
                     blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
-            except ConsulLockAcquireTimeoutError as e:
+            except LockAcquireTimeoutError as e:
                 logger.debug(e)
                 print(json.dumps(None))
                 exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
@@ -183,7 +183,7 @@ def main(cli_arguments: List[str]):
         elif cli_configuration.action == Action.UNLOCK:
             print(json.dumps(consul_lock.release()))
 
-    except PermissionDeniedError as e:
+    except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly (currently set to \"{consul_configuration.token}\")?"
         logger.error(error_message)

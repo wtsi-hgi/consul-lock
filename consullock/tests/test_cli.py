@@ -6,15 +6,15 @@ from capturewrap import CaptureResult
 from timeout_decorator import timeout_decorator
 from useintest.predefined.consul import ConsulDockerisedService
 
-from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER
-from consullock.common import DESCRIPTION
+from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
+    SESSION_TTL_CLI_LONG_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
-    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE
+    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, _EnvironmentPreservingTest, all_capture_builder, set_consul_env
 from consullock.tests.test_locks import lock_when_unlocked, LockerCallable, lock_when_locked, \
-    _DEFAULT_LOCK_ACQUIRE_TIMEOUT, ConsulLockTestTimeoutError
+    _DEFAULT_LOCK_ACQUIRE_TIMEOUT, ConsulLockTestTimeoutError, lock_twice
 
 
 class TestCli(_EnvironmentPreservingTest):
@@ -50,13 +50,9 @@ class TestCli(_EnvironmentPreservingTest):
 
     def test_lock_when_unlocked(self):
         lock_result, unlock_result = lock_when_unlocked(TestCli._create_locker(), TestCli._unlocker)
-
-        self.assertIsInstance(lock_result.exception, SystemExit)
         self.assertEqual(SUCCESS_EXIT_CODE, lock_result.exception.code)
         self.assertIsInstance(
             json.loads(lock_result.stdout, cls=ConsulLockInformationJSONDecoder), ConsulLockInformation)
-
-        self.assertTrue(json.loads(unlock_result.stdout))
 
     def test_lock_when_locked_blocking(self):
         lock_result = lock_when_locked(TestCli._create_locker())
@@ -73,6 +69,21 @@ class TestCli(_EnvironmentPreservingTest):
         self.assertEqual(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, lock_result.exception.code)
         print(lock_result.stdout)
         self.assertIsNone(json.loads(lock_result.stdout))
+
+    def test_set_session_ttl(self):
+        def first_lock_callback(lock_result: CaptureResult):
+            assert lock_result.exception.code == SUCCESS_EXIT_CODE
+
+        _, lock_result = lock_twice(
+            TestCli._create_locker(
+                action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", str(MIN_LOCK_TIMEOUT_IN_SECONDS)]),
+            TestCli._create_locker(),
+            MIN_LOCK_TIMEOUT_IN_SECONDS * 5.0,
+            first_lock_callback
+        )
+        self.assertEqual(SUCCESS_EXIT_CODE, lock_result.exception.code)
+        self.assertIsInstance(
+            json.loads(lock_result.stdout, cls=ConsulLockInformationJSONDecoder), ConsulLockInformation)
 
 
 if __name__ == "__main__":

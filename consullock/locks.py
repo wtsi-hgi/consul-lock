@@ -27,25 +27,30 @@ class ConsulLockBaseError(Exception):
     """
 
 
-class ConsulLockAcquireTimeoutError(ConsulLockBaseError):
+class LockAcquireTimeoutError(ConsulLockBaseError):
     """
     Raised if the timeout to get a lock expires.
     """
 
+class UnusableStateException(ConsulLockBaseError):
+    """
+    Raised upon attempt to use instance that is in an unusable state.
+    """
 
-class ConsulError(ConsulLockBaseError):
+
+class ConsulConnectionError(ConsulLockBaseError):
     """
     Wrapped exception from the underlying library dealing with Consul.
     """
 
 
-class PermissionDeniedError(ConsulError):
+class PermissionDeniedConsulError(ConsulConnectionError):
     """
     Raised when Consul has refused to act due to a permission error.
     """
 
 
-class SessionLostError(ConsulError):
+class SessionLostConsulError(ConsulConnectionError):
     """
     Raised if a Consul session is lost in the middle of an operation.
     """
@@ -53,7 +58,7 @@ class SessionLostError(ConsulError):
 
 def _exception_converter(callable: Callable) -> Callable:
     """
-    Converts exceptions from underlying libraries to native exceptions.
+    Decorator that converts exceptions from underlying libraries to native exceptions.
     :param callable: the callable to convert exceptions of
     :return: wrapped callable
     """
@@ -63,24 +68,21 @@ def _exception_converter(callable: Callable) -> Callable:
         except ConsulLockBaseError as e:
             raise e
         except ACLPermissionDenied as e:
-            raise PermissionDeniedError() from e
-        except ConsulException as e:
-            if "invalid session" in e.args[0]:
-                raise SessionLostError() from e
-            else:
-                raise ConsulError() from e
+            raise PermissionDeniedConsulError() from e
         except Exception as e:
-            raise ConsulError() from e
+            raise ConsulConnectionError() from e
     return wrapped
 
 
-def _raise_if_teardown_called(callable: Callable) -> Callable:
+def _raise_if_teardown_called(callable: Callable[["ConsulLock", ...], Any]) -> Callable:
     """
-    TODO
-    :param callable:
-    :return:
+    Decorator that raises an exception if consul lock manager has been torn down.
+    :param callable: the callable to wrap
+    :return: wrapped callable
     """
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: "ConsulLock", *args, **kwargs):
+        if self._teardown_called:
+            raise UnusableStateException("Teardown has been called on the lock manager")
         return callable(self, *args, **kwargs)
     return wrapper
 
@@ -145,7 +147,7 @@ class ConsulLock:
         self._acquiring_session_ids.add(session_id)
         logger.info(f"Created session with ID: {session_id}")
 
-        @timeout_decorator.timeout(timeout, timeout_exception=ConsulLockAcquireTimeoutError)
+        @timeout_decorator.timeout(timeout, timeout_exception=LockAcquireTimeoutError)
         def _acquire() -> ConsulLockInformation:
             while True:
                 logger.debug("Going to acquire lock")
@@ -218,10 +220,16 @@ class ConsulLock:
         Attempts to get the lock using the given session.
         :param session_id: the identifier of the Consul session that should try to hold the lock
         :return: details about the lock if acquired, else `None`
+        :raises SessionLostConsulError: if the Consul session is lost
         """
         lock_information = ConsulLockInformation(session_id, datetime.utcnow())
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
-        success = self.consul_client.kv.put(key=self.key, value=value, acquire=session_id)
+        try:
+            success = self.consul_client.kv.put(key=self.key, value=value, acquire=session_id)
+        except ConsulException as e:
+            if "invalid session" in e.args[0]:
+                raise SessionLostConsulError() from e
+            raise e
         return lock_information if success else None
 
 

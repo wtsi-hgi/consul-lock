@@ -2,6 +2,10 @@ import logging
 import os
 from typing import NamedTuple
 
+PACKAGE_NAME = "consullock"
+DESCRIPTION = "Tool to use locks in Consul"
+EXECUTABLE_NAME = "consul-lock"
+
 DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 1.0
 MIN_LOCK_TIMEOUT_IN_SECONDS = 10
 MAX_LOCK_TIMEOUT_IN_SECONDS = 86400

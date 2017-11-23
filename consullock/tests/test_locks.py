@@ -1,28 +1,27 @@
 import unittest
 from typing import Callable, Tuple, List, Dict, Any
-from unittest import TestCase
 
 from capturewrap import CaptureResult
 from timeout_decorator import timeout_decorator
+from useintest.predefined.consul import ConsulServiceController, ConsulDockerisedService
 
+from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS
 from consullock.locks import ConsulLock, ConsulLockBaseError
 from consullock.models import ConsulLockInformation
-from consullock.tests._common import _EnvironmentPreservingTest, set_consul_env, TEST_KEY, all_capture_builder
-from useintest.predefined.consul import ConsulServiceController, ConsulDockerisedService
+from consullock.tests._common import _EnvironmentPreservingTest, TEST_KEY, all_capture_builder
 
 LockerCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
 UnlockerCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
 
-_DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: [key]
-_DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=service.create_consul_client())
+DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: [key]
+DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=service.create_consul_client())
 _DEFAULT_LOCK_ACQUIRE_TIMEOUT = 0.5
 
 
 class ConsulLockTestTimeoutError(ConsulLockBaseError):
     """
-    TODO
+    Raised when a timeout occurs in a test.
     """
-
 
 def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable) \
         -> Tuple[CaptureResult, CaptureResult]:
@@ -38,7 +37,32 @@ def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable) \
         return lock_result, unlock_result
 
 
-def lock_when_locked(locker: LockerCallable, max_lock_block: float=_DEFAULT_LOCK_ACQUIRE_TIMEOUT):
+def lock_twice(first_locker: LockerCallable, second_locker: LockerCallable,
+               max_second_lock_wait: float=_DEFAULT_LOCK_ACQUIRE_TIMEOUT,
+               first_lock_callback: Callable[[CaptureResult], Any]=None) -> Tuple[CaptureResult, CaptureResult]:
+    """
+    TODO
+    :param first_locker:
+    :param second_locker:
+    :param max_second_lock_wait:
+    :return:
+    """
+    with ConsulServiceController().start_service() as service:
+        first_lock_result = first_locker(TEST_KEY, service)
+        if first_lock_callback:
+            first_lock_callback(first_lock_result)
+
+        @timeout_decorator.timeout(max_second_lock_wait, timeout_exception=ConsulLockTestTimeoutError)
+        def get_lock_with_timeout() -> CaptureResult:
+            return second_locker(TEST_KEY, service)
+
+        try:
+            return first_lock_result, get_lock_with_timeout()
+        except ConsulLockTestTimeoutError as e:
+            return first_lock_result, CaptureResult(exception=e)
+
+
+def lock_when_locked(locker: LockerCallable, max_lock_block: float=_DEFAULT_LOCK_ACQUIRE_TIMEOUT) -> CaptureResult:
     """
     Tests getting a lock when it is already locked.
     :param locker: method that locks Consul
@@ -46,20 +70,16 @@ def lock_when_locked(locker: LockerCallable, max_lock_block: float=_DEFAULT_LOCK
     :param max_lock_block: maximum amount of time (in seconds) to block for
     :raise timeout_decorator.TimeoutError: if block on lock times out
     """
-    with ConsulServiceController().start_service() as service:
+    def first_locker(key: str, service: ConsulDockerisedService) -> CaptureResult:
         consul_lock = ConsulLock(TEST_KEY, consul_client=service.create_consul_client())
-        assert consul_lock.acquire(TEST_KEY)
+        lock_information = consul_lock.acquire()
+        return CaptureResult(return_value=lock_information)
 
-        @timeout_decorator.timeout(max_lock_block, timeout_exception=ConsulLockTestTimeoutError)
-        def get_lock_with_timeout():
-            return locker(TEST_KEY, service)
+    def first_lock_callback(lock_result: CaptureResult):
+        assert isinstance(lock_result.return_value, ConsulLockInformation)
 
-        try:
-            return get_lock_with_timeout()
-        except Exception as e:
-            return CaptureResult(exception=e)
-        finally:
-            consul_lock.teardown()
+    _, lock_result = lock_twice(first_locker, locker, max_lock_block, first_lock_callback)
+    return lock_result
 
 
 class TestConsulLock(_EnvironmentPreservingTest):
@@ -68,10 +88,9 @@ class TestConsulLock(_EnvironmentPreservingTest):
     """
     @staticmethod
     def _create_locker(
-            lock_init_args: Callable[[str, ConsulDockerisedService], List]=_DEFAULT_LOCK_INIT_ARGS_GENERATOR,
-            lock_init_kwargs: Callable[[str, ConsulDockerisedService], Dict]=_DEFAULT_LOCK_INIT_KWARGS_GENERATOR,
-            acquire_args: List[Any]=None, acquire_kwargs: Dict[str, Any]=None) \
-            -> LockerCallable:
+            lock_init_args: Callable[[str, ConsulDockerisedService], List]=DEFAULT_LOCK_INIT_ARGS_GENERATOR,
+            lock_init_kwargs: Callable[[str, ConsulDockerisedService], Dict]=DEFAULT_LOCK_INIT_KWARGS_GENERATOR,
+            acquire_args: List[Any]=None, acquire_kwargs: Dict[str, Any]=None) -> LockerCallable:
         def _locker(key: str, service: ConsulDockerisedService) -> CaptureResult:
             nonlocal acquire_args, acquire_kwargs
             consul_lock = ConsulLock(*lock_init_args(key, service), **lock_init_kwargs(key, service))
@@ -102,6 +121,20 @@ class TestConsulLock(_EnvironmentPreservingTest):
         lock_result = lock_when_locked(TestConsulLock._create_locker(
             acquire_kwargs=dict(timeout=_DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2)))
         self.assertIsNone(lock_result.return_value)
+
+    def test_set_session_ttl(self):
+        def first_lock_callback(lock_result: CaptureResult):
+            assert isinstance(lock_result.return_value, ConsulLockInformation)
+
+        _, lock_result = lock_twice(
+            TestConsulLock._create_locker(lock_init_kwargs=lambda key, service: dict(
+                **DEFAULT_LOCK_INIT_KWARGS_GENERATOR(key, service),
+                session_ttl_in_seconds=MIN_LOCK_TIMEOUT_IN_SECONDS)),
+            TestConsulLock._create_locker(),
+            MIN_LOCK_TIMEOUT_IN_SECONDS * 5.0,
+            first_lock_callback
+        )
+        self.assertIsInstance(lock_result.return_value, ConsulLockInformation)
 
 
 if __name__ == "__main__":
