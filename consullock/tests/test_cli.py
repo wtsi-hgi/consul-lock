@@ -3,7 +3,6 @@ import unittest
 from typing import List, Any
 
 from capturewrap import CaptureResult
-from timeout_decorator import timeout_decorator
 from useintest.predefined.consul import ConsulDockerisedService
 
 from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
@@ -12,12 +11,14 @@ from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRON
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
-from consullock.tests._common import TEST_KEY, _EnvironmentPreservingTest, all_capture_builder, set_consul_env
+from consullock.tests._common import TEST_KEY, all_capture_builder, set_consul_env
+from consullock.tests._test_locks import TestLock, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
+    MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR
 from consullock.tests.test_locks import lock_when_unlocked, LockerCallable, lock_when_locked, \
-    _DEFAULT_LOCK_ACQUIRE_TIMEOUT, ConsulLockTestTimeoutError, lock_twice
+    ConsulLockTestTimeoutError, lock_twice
 
 
-class TestCli(_EnvironmentPreservingTest):
+class TestCli(TestLock):
     """
     Tests for the CLI.
     """
@@ -65,7 +66,7 @@ class TestCli(_EnvironmentPreservingTest):
 
     def test_lock_when_locked_with_timeout(self):
         lock_result = lock_when_locked(TestCli._create_locker(
-            action_args=[f"--{TIMEOUT_CLI_lONG_PARAMETER}", str(_DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2)]))
+            action_args=[f"--{TIMEOUT_CLI_lONG_PARAMETER}", str(DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2)]))
         self.assertEqual(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, lock_result.exception.code)
         print(lock_result.stdout)
         self.assertIsNone(json.loads(lock_result.stdout))
@@ -78,7 +79,7 @@ class TestCli(_EnvironmentPreservingTest):
             TestCli._create_locker(
                 action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", str(MIN_LOCK_TIMEOUT_IN_SECONDS)]),
             TestCli._create_locker(),
-            MIN_LOCK_TIMEOUT_IN_SECONDS * 5.0,
+            MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR,
             first_lock_callback
         )
         self.assertEqual(SUCCESS_EXIT_CODE, lock_result.exception.code)

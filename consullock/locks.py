@@ -74,16 +74,16 @@ def _exception_converter(callable: Callable) -> Callable:
     return wrapped
 
 
-def _raise_if_teardown_called(callable: Callable[["ConsulLock", ...], Any]) -> Callable:
+def _raise_if_teardown_called(callable: Callable) -> Callable:
     """
     Decorator that raises an exception if consul lock manager has been torn down.
-    :param callable: the callable to wrap
+    :param callable: the callable to wrap (where `ConsulLock` is always passed as the first argument)
     :return: wrapped callable
     """
-    def wrapper(self: "ConsulLock", *args, **kwargs):
-        if self._teardown_called:
+    def wrapper(consul_lock: "ConsulLock", *args, **kwargs):
+        if consul_lock._teardown_called:
             raise UnusableStateException("Teardown has been called on the lock manager")
-        return callable(self, *args, **kwargs)
+        return callable(consul_lock, *args, **kwargs)
     return wrapper
 
 

@@ -13,19 +13,6 @@ TEST_VALUE = "world"
 all_capture_builder = CaptureWrapBuilder(True, True, True)
 
 
-class _EnvironmentPreservingTest(unittest.TestCase):
-    """
-    Tests for ConsulLock.
-    """
-    def setUp(self):
-        self._consul_service_controller = ConsulServiceController()
-        self._env_cache = deepcopy(os.environ)
-
-    def tearDown(self):
-        os.environ.clear()
-        os.environ.update(self._env_cache)
-
-
 def set_consul_env(service: ConsulDockerisedService):
     """
     TODO
