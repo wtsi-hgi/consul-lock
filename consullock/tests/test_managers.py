@@ -5,7 +5,8 @@ from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
 from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
-from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError
+from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError, \
+    ConsulConnectionError
 from consullock.managers import ConsulLockManager
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import all_capture_builder, TEST_KEY
@@ -90,10 +91,26 @@ class TestConsulLockManager(BaseLockTest):
         assert isinstance(lock_result.return_value, ConsulLockInformation)
         self.assertTrue(unlock_result.return_value)
 
+    def test_unlock_all(self):
+        test_keys = [f"{TEST_KEY}_{i}" for i in range(5)]
+        with ConsulServiceController().start_service() as service:
+            consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+            for key in test_keys:
+                lock = consul_lock.acquire(key)
+                assert isinstance(lock, ConsulLockInformation)
+            unlock_results = consul_lock.release_all(test_keys)
+        for unlock_result in unlock_results:
+            self.assertTrue(unlock_result)
+
     def test_cannot_use_after_teardown(self):
         consul_lock = ConsulLockManager(consul_configuration=_DUMMY_CONSUL_CONFIGURATION)
         consul_lock.teardown()
         self.assertRaises(UnusableStateError, consul_lock.acquire)
+
+    def test_service_goes_away(self):
+        with ConsulServiceController().start_service() as service:
+            consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+        self.assertRaises(ConsulConnectionError, consul_lock.acquire, TEST_KEY)
 
 
 del BaseLockTest

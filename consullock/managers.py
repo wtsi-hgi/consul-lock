@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from threading import Lock
 from time import sleep
-from typing import Callable, Optional, Any, Set
+from typing import Callable, Optional, Any, Set, List
 
 import requests
 from consul import Consul
@@ -184,14 +184,16 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def release_all(self, keys: str):
+    def release_all(self, keys: List[str]) -> List[bool]:
         """
-        TODO
-        :param keys:
-        :return:
+        Releases all of the given keys.
+        :param keys: the keys to release
+        :return: whether the keys were released
         """
+        released: List[bool] = []
         for key in keys:
-            self.release(key)
+            released.append(self.release(key))
+        return released
 
     @_exception_converter
     @_raise_if_teardown_called
@@ -201,7 +203,6 @@ class ConsulLockManager:
         :param name_regex:
         :return:
         """
-
 
     @_exception_converter
     def teardown(self):
