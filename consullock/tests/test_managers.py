@@ -107,10 +107,22 @@ class TestConsulLockManager(BaseLockTest):
         consul_lock.teardown()
         self.assertRaises(UnusableStateError, consul_lock.acquire)
 
-    def test_service_goes_away(self):
+    def test_find_when_no_locks(self):
         with ConsulServiceController().start_service() as service:
             consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
-        self.assertRaises(ConsulConnectionError, consul_lock.acquire, TEST_KEY)
+            found_locks = consul_lock.find(f"{TEST_KEY}_[0-9]+")
+            self.assertEqual(0, len(found_locks))
+
+    def test_find_when_locks(self):
+        interesting_keys = [f"{TEST_KEY}_{i}" for i in range(5)]
+        other_keys = [TEST_KEY, "other", f"{TEST_KEY}_1a", f"{TEST_KEY}_"]
+        with ConsulServiceController().start_service() as service:
+            consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+            for key in interesting_keys + other_keys:
+                lock = consul_lock.acquire(key)
+                assert isinstance(lock, ConsulLockInformation)
+            found_locks = consul_lock.find(f"{TEST_KEY}_[0-9]+")
+            self.assertCountEqual(interesting_keys, found_locks)
 
 
 del BaseLockTest
