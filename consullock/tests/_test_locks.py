@@ -2,22 +2,23 @@ import os
 import unittest
 from abc import abstractmethod, ABCMeta
 from copy import deepcopy
-from typing import Callable, Tuple, Any
+from typing import Callable, Tuple, Any, List
 
 from capturewrap import CaptureResult
 from timeout_decorator import timeout_decorator
 from useintest.predefined.consul import ConsulServiceController, ConsulDockerisedService
 
 from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS
-from consullock.locks import ConsulLock
+from consullock.managers import ConsulLockManager
 from consullock.exceptions import ConsulLockBaseError
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY
 
-LockerCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
-UnlockerCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
+LockActionCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
+LockerCallable = LockActionCallable
+UnlockerCallable = LockActionCallable
 
-DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: [key]
+DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: []
 DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=service.create_consul_client())
 DEFAULT_LOCK_ACQUIRE_TIMEOUT = 0.5
 
@@ -25,67 +26,68 @@ MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR = MIN_LOCK_TIMEOUT_IN_SECONDS * 5.0
 DOUBLE_SLASH_KEY = "my//key"
 
 
-def lock_when_unlocked(locker: LockerCallable, unlocker: UnlockerCallable, key: str=TEST_KEY) \
-        -> Tuple[CaptureResult, CaptureResult]:
+def acquire_locks(locker: LockerCallable, keys: List[str]=None) -> List[CaptureResult]:
     """
-    Tests getting a lock when it is not locked.
+    Test getting locks.
     :param locker: method that locks Consul
-    :param unlocker: method that unlocks Consul
-    :param key: lock key to use
-    :return: tuple where the first element is the result of the lock and the second is that of a subsequent unlock
+    :param keys: the keys of the locks to acquire (in order). Will use single test key if not defined
+    :return: the result of the lock acquisitions
     """
+    if keys is None:
+        keys = [TEST_KEY]
+    lock_results: List[CaptureResult] = []
     with ConsulServiceController().start_service() as service:
-        lock_result = locker(key, service)
-        unlock_result = unlocker(key, service)
-        return lock_result, unlock_result
+        for key in keys:
+            lock_results.append(locker(key, service))
+        return lock_results
 
 
-def lock_twice(first_locker: LockerCallable, second_locker: LockerCallable,
-               max_second_lock_wait: float=DEFAULT_LOCK_ACQUIRE_TIMEOUT,
-               first_lock_callback: Callable[[CaptureResult], Any]=None) -> Tuple[CaptureResult, CaptureResult]:
+def double_action(first_action: LockActionCallable, second_action: LockActionCallable,
+                  second_action_timeout: float=DEFAULT_LOCK_ACQUIRE_TIMEOUT,
+                  first_action_callback: Callable[[CaptureResult], Any]=None) -> Tuple[CaptureResult, CaptureResult]:
     """
     TODO
-    :param first_locker:
-    :param second_locker:
-    :param max_second_lock_wait:
+    :param first_action:
+    :param second_action:
+    :param second_action_timeout:
     :return:
+    :raises TestActionTimeoutError:
     """
     with ConsulServiceController().start_service() as service:
-        first_lock_result = first_locker(TEST_KEY, service)
-        if first_lock_callback:
-            first_lock_callback(first_lock_result)
+        first_action_result = first_action(TEST_KEY, service)
+        if first_action_callback:
+            first_action_callback(first_action_result)
 
-        @timeout_decorator.timeout(max_second_lock_wait, timeout_exception=ConsulLockTestTimeoutError)
-        def get_lock_with_timeout() -> CaptureResult:
-            return second_locker(TEST_KEY, service)
+        @timeout_decorator.timeout(second_action_timeout, timeout_exception=TestActionTimeoutError)
+        def second_action_with_timeout() -> CaptureResult:
+            return second_action(TEST_KEY, service)
 
         try:
-            return first_lock_result, get_lock_with_timeout()
-        except ConsulLockTestTimeoutError as e:
-            return first_lock_result, CaptureResult(exception=e)
+            return first_action_result, second_action_with_timeout()
+        except TestActionTimeoutError as e:
+            return first_action_result, CaptureResult(exception=e)
 
 
-def lock_when_locked(locker: LockerCallable, max_lock_block: float=DEFAULT_LOCK_ACQUIRE_TIMEOUT) -> CaptureResult:
+def action_when_locked(action: LockActionCallable, timeout: float=DEFAULT_LOCK_ACQUIRE_TIMEOUT) -> CaptureResult:
     """
     Tests getting a lock when it is already locked.
     :param locker: method that locks Consul
-    :param unlocker: method that unlocks Consul
-    :param max_lock_block: maximum amount of time (in seconds) to block for
+    :param timeout: maximum amount of time (in seconds) to block for
     :raise timeout_decorator.TimeoutError: if block on lock times out
     """
     def first_locker(key: str, service: ConsulDockerisedService) -> CaptureResult:
-        consul_lock = ConsulLock(TEST_KEY, consul_client=service.create_consul_client())
-        lock_information = consul_lock.acquire()
+        consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+        lock_information = consul_lock.acquire(TEST_KEY)
         return CaptureResult(return_value=lock_information)
 
     def first_lock_callback(lock_result: CaptureResult):
         assert isinstance(lock_result.return_value, ConsulLockInformation)
 
-    _, lock_result = lock_twice(first_locker, locker, max_lock_block, first_lock_callback)
+    _, lock_result = double_action(first_locker, action, timeout, first_lock_callback)
     return lock_result
 
 
-class ConsulLockTestTimeoutError(ConsulLockBaseError):
+class TestActionTimeoutError(ConsulLockBaseError):
     """
     Raised when a timeout occurs in a test.
     """
@@ -106,43 +108,54 @@ class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
     @abstractmethod
     def test_lock_when_unlocked(self):
         """
-        TODO
+        Tests that a lock can be acquired if not locked.
         """
 
     @abstractmethod
     def test_lock_when_locked_blocking(self):
         """
-        TODO
+        Tests that a lock cannot be acquired if already locked and that the thread blocks on the call to acquire.
         """
 
     @abstractmethod
     def test_lock_when_locked_non_blocking(self):
         """
-        TODO
+        Tests that a lock cannot be acquired if already locked and that the thread does not block on the call to
+        acquire.
         """
 
     @abstractmethod
     def test_lock_when_locked_with_timeout(self):
         """
-        TODO
+        Tests that a lock acquire can timeout.
         """
 
     @abstractmethod
-    def test_set_session_ttl(self):
+    def test_lock_with_session_ttl(self):
         """
-        TODO
-        """
-
-    @abstractmethod
-    def test_lock_with_double_slash(self):
-        """
-        TODO
-        :return:
+        Tests that a lock with a session TTL can be set.
         """
 
     @abstractmethod
     def test_lock_with_invalid_session_ttl(self):
         """
-        TODO
-        :return:
+        Tests that a lock with an invalid session TTL cannot be set.
+        """
+
+    @abstractmethod
+    def test_lock_with_double_slash(self):
+        """
+        Tests that a lock with a double slash (//) cannot be set.
+        """
+
+    @abstractmethod
+    def test_unlock_when_unlocked(self):
+        """
+        Tests that a lock can be unlocked when not locked.
+        """
+
+    @abstractmethod
+    def test_unlock_when_locked(self):
+        """
+        Tests that a lock can be unlocked when locked.
         """

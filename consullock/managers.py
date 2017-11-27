@@ -48,14 +48,14 @@ def _raise_if_teardown_called(callable: Callable) -> Callable:
     :param callable: the callable to wrap (where `ConsulLock` is always passed as the first argument)
     :return: wrapped callable
     """
-    def wrapper(consul_lock: "ConsulLock", *args, **kwargs):
+    def wrapper(consul_lock: "ConsulLockManager", *args, **kwargs):
         if consul_lock._teardown_called:
             raise UnusableStateError("Teardown has been called on the lock manager")
         return callable(consul_lock, *args, **kwargs)
     return wrapper
 
 
-class ConsulLock:
+class ConsulLockManager:
     """
     TODO
     """
@@ -83,29 +83,25 @@ class ConsulLock:
         if "//" in key:
             raise DoubleSlashKeyError(key)
 
-    def __init__(self, key: str, consul_configuration: ConsulConfiguration=None, session_ttl_in_seconds: float=None,
-                 lock_poll_interval_generator: Callable[[], float]= DEFAULT_LOCK_POLL_INTERVAL_GENERATOR,
-                 consul_client: Consul = None):
+    def __init__(self, *, consul_configuration: ConsulConfiguration=None, session_ttl_in_seconds: float=None,
+                 lock_poll_interval_generator: Callable[[], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR,
+                 consul_client: Consul=None, regex_key: bool=False):
         """
         TODO
-        :param key: lock key
         :param consul_configuration:
         :param session_ttl_in_seconds:
         :param lock_poll_interval_generator:
         :param consul_client:
+        :param regex_key:
         :raises InvalidSessionTtlValueError: if the `session_ttl_in_seconds` is not valid
-        :raises InvalidKeyError: if the `key` is not valid
         """
         if session_ttl_in_seconds is not None:
-            ConsulLock.validate_session_ttl(session_ttl_in_seconds)
+            ConsulLockManager.validate_session_ttl(session_ttl_in_seconds)
         if consul_configuration is not None and consul_client is not None:
             raise ValueError("Must either define `consul_configuration` or `consul_client`, not both")
         if consul_configuration is None and consul_client is None:
             raise ValueError("Either `consul_configuration` xor `consul_client` must be given")
 
-        ConsulLock.validate_key(key)
-
-        self.key = key
         self.consul_client = consul_client or create_consul_client(consul_configuration)
         self.session_ttl_in_seconds = session_ttl_in_seconds
         self.lock_poll_interval_generator = lock_poll_interval_generator
@@ -118,13 +114,17 @@ class ConsulLock:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def acquire(self, blocking: bool=True, timeout: float=None) -> Optional[ConsulLockInformation]:
+    def acquire(self, key: str, blocking: bool=True, timeout: float=None) -> Optional[ConsulLockInformation]:
         """
         TODO
+        :param key:
         :param blocking:
         :param timeout: timeout in seconds
         :return:
+        :raises InvalidKeyError: if the `key` is not valid
         """
+        ConsulLockManager.validate_key(key)
+
         session_id = self.consul_client.session.create(
             lock_delay=0, ttl=self.session_ttl_in_seconds, behavior="delete")
         self._acquiring_session_ids.add(session_id)
@@ -134,7 +134,7 @@ class ConsulLock:
         def _acquire() -> ConsulLockInformation:
             while True:
                 logger.debug("Going to acquire lock")
-                lock_information = self._acquire_lock(session_id)
+                lock_information = self._acquire_lock(key, session_id)
                 if lock_information is not None or not blocking:
                     logger.debug("Acquired lock!")
                     return lock_information
@@ -154,14 +154,18 @@ class ConsulLock:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def release(self) -> bool:
+    def release(self, key: str) -> bool:
         """
         Release the lock.
 
         Noop if not locked.
+        :param key: TODO
         :return: whether a lock has been released
+        :raises InvalidKeyError: if the `key` is not valid
         """
-        key_value = self.consul_client.kv.get(self.key)[1]
+        ConsulLockManager.validate_key(key)
+
+        key_value = self.consul_client.kv.get(key)[1]
         if key_value is None:
             logger.info(f"No lock found")
             return False
@@ -177,6 +181,27 @@ class ConsulLock:
 
         logger.info("Unlocked" if unlocked else "Went to unlock but was already released upon sending request")
         return unlocked
+
+    @_exception_converter
+    @_raise_if_teardown_called
+    def release_all(self, keys: str):
+        """
+        TODO
+        :param keys:
+        :return:
+        """
+        for key in keys:
+            self.release(key)
+
+    @_exception_converter
+    @_raise_if_teardown_called
+    def find(self, name_regex: str):
+        """
+        TODO
+        :param name_regex:
+        :return:
+        """
+
 
     @_exception_converter
     def teardown(self):
@@ -198,9 +223,10 @@ class ConsulLock:
                         logger.warning(f"Could not connect to Consul to clean up session {session_id}")
                 atexit.unregister(self.teardown)
 
-    def _acquire_lock(self, session_id: str) -> Optional[ConsulLockInformation]:
+    def _acquire_lock(self, key: str, session_id: str) -> Optional[ConsulLockInformation]:
         """
         Attempts to get the lock using the given session.
+        :param key: TODO
         :param session_id: the identifier of the Consul session that should try to hold the lock
         :return: details about the lock if acquired, else `None`
         :raises SessionLostConsulError: if the Consul session is lost
@@ -208,7 +234,7 @@ class ConsulLock:
         lock_information = ConsulLockInformation(session_id, datetime.utcnow())
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
         try:
-            success = self.consul_client.kv.put(key=self.key, value=value, acquire=session_id)
+            success = self.consul_client.kv.put(key=key, value=value, acquire=session_id)
         except ConsulException as e:
             if "invalid session" in e.args[0]:
                 raise SessionLostConsulError() from e
