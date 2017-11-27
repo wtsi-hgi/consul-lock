@@ -13,7 +13,7 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, \
     PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
-from consullock.locks import ConsulLock
+from consullock.managers import ConsulLockManager
 from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, InvalidKeyError, \
     DoubleSlashKeyError, InvalidEnvironmentVariableError, InvalidSessionTtlValueError
 
@@ -87,6 +87,8 @@ def _create_parser() -> ArgumentParser:
         subparser.add_argument(
             KEY_CLI_PARAMETER, type=str, help="the lock identifier")
 
+    return parser
+
 
 def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     """
@@ -100,7 +102,6 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
         if e.code == SUCCESS_EXIT_CODE:
             raise e
         raise InvalidCliArgumentError() from e
-
 
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
@@ -170,24 +171,18 @@ def main(cli_arguments: List[str]):
         exit(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
 
     try:
-        consul_lock = ConsulLock(
-            key=cli_configuration.key,
+        consul_lock = ConsulLockManager(
             consul_configuration=consul_configuration,
             session_ttl_in_seconds=cli_configuration.session_ttl)
     except InvalidSessionTtlValueError as e:
         logger.error(e)
         exit(INVALID_SESSION_TTL_EXIT_CODE)
-    except DoubleSlashKeyError as e:
-        logger.debug(e)
-        logger.error(f"Double slashes \"//\" in keys get converted into single slashes \"/\" - please use a "
-                     f"single slash if this is intended: {cli_configuration.key}")
-        exit(INVALID_KEY_EXIT_CODE)
 
     try:
         if cli_configuration.action == Action.LOCK:
             try:
                 lock_information = consul_lock.acquire(
-                    blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
+                    key=cli_configuration.key, blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
             except LockAcquireTimeoutError as e:
                 logger.debug(e)
                 logger.error(f"Timed out whilst waiting to acquire lock: {cli_configuration.key}")
@@ -201,7 +196,8 @@ def main(cli_arguments: List[str]):
                 exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
 
         elif cli_configuration.action == Action.UNLOCK:
-            print(json.dumps(consul_lock.release()))
+            release_information = consul_lock.release(key=cli_configuration.key)
+            print(json.dumps(release_information))
 
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
@@ -209,6 +205,12 @@ def main(cli_arguments: List[str]):
         logger.debug(e)
         logger.error(error_message)
         exit(PERMISSION_DENIED_EXIT_CODE)
+
+    except DoubleSlashKeyError as e:
+        logger.debug(e)
+        logger.error(f"Double slashes \"//\" in keys get converted into single slashes \"/\" - please use a "
+                     f"single slash if this is intended: {cli_configuration.key}")
+        exit(INVALID_KEY_EXIT_CODE)
 
     exit(SUCCESS_EXIT_CODE)
 
