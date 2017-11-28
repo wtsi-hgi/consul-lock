@@ -1,10 +1,13 @@
 import atexit
 import json
+import re
 from datetime import datetime
+from json import JSONDecodeError
 from threading import Lock
 from time import sleep
-from typing import Callable, Optional, Any, Set, List
+from typing import Callable, Optional, Any, Set, List, Collection, Dict
 
+import os
 import requests
 from consul import Consul
 from consul.base import ACLPermissionDenied, ConsulException
@@ -20,6 +23,8 @@ from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, 
     InvalidSessionTtlValueError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
+
+KEY_DIRECTORY_SEPARATOR = "/"
 
 logger = create_logger(__name__)
 
@@ -196,12 +201,33 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def find(self, name_regex: str):
+    def find(self, name_regex: str) -> Dict[str, Optional[ConsulLockInformation]]:
         """
-        TODO
-        :param name_regex:
-        :return:
+        Finds the keys with names that match the given regex.
+        :param name_regex: key name regex
+        :return: keys that match
         """
+        # Gets prefix directory (must not include regex!)
+        escaped_name_regex = re.escape(name_regex)
+        directory_prefix = os.path.commonprefix(
+            (name_regex.replace(KEY_DIRECTORY_SEPARATOR, re.escape(KEY_DIRECTORY_SEPARATOR)), escaped_name_regex)) \
+            .replace("\\", "")
+
+        data = self.consul_client.kv.get(directory_prefix, recurse=True)[1]
+        if data is None:
+            return dict()
+        key_indexed_data = {key_data["Key"]: key_data for key_data in data}
+
+        name_pattern = re.compile(name_regex)
+        matches = [value for key, value in key_indexed_data.items() if name_pattern.fullmatch(key) is not None]
+        matched_return: Dict[str, Optional[ConsulLockInformation]] = dict()
+        for match in matches:
+            try:
+                decoded_match = json.loads(match["Value"], cls=ConsulLockInformationJSONDecoder)
+                matched_return[decoded_match.key] = decoded_match
+            except JSONDecodeError:
+                matched_return[match["Key"]] = None
+        return matched_return
 
     @_exception_converter
     def teardown(self):
@@ -231,7 +257,7 @@ class ConsulLockManager:
         :return: details about the lock if acquired, else `None`
         :raises SessionLostConsulError: if the Consul session is lost
         """
-        lock_information = ConsulLockInformation(session_id, datetime.utcnow())
+        lock_information = ConsulLockInformation(key, session_id, datetime.utcnow())
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
         try:
             success = self.consul_client.kv.put(key=key, value=value, acquire=session_id)
