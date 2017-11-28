@@ -5,6 +5,7 @@ from consullock.models import ConsulLockInformation
 
 
 mapping_schema = [
+    JsonPropertyMapping("key", "key", "key"),
     JsonPropertyMapping("session", "session_id", "session_id"),
     JsonPropertyMapping("created", "created", "created",
         encoder_cls=DatetimeISOFormatJSONEncoder, decoder_cls=DatetimeISOFormatJSONDecoder)

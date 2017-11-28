@@ -7,9 +7,9 @@ from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceCo
 from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
 from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError, \
     ConsulConnectionError
-from consullock.managers import ConsulLockManager
+from consullock.managers import ConsulLockManager, KEY_DIRECTORY_SEPARATOR
 from consullock.models import ConsulLockInformation
-from consullock.tests._common import all_capture_builder, TEST_KEY
+from consullock.tests._common import all_capture_builder, TEST_KEY, TEST_KEY_DIRECTORY, TEST_KEY_2
 from consullock.tests._test_locks import BaseLockTest, DEFAULT_LOCK_INIT_ARGS_GENERATOR, \
     DEFAULT_LOCK_INIT_KWARGS_GENERATOR, \
     LockerCallable, acquire_locks, TestActionTimeoutError, action_when_locked, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
@@ -107,10 +107,36 @@ class TestConsulLockManager(BaseLockTest):
         consul_lock.teardown()
         self.assertRaises(UnusableStateError, consul_lock.acquire)
 
-    def test_service_goes_away(self):
+    def test_find_when_no_locks(self):
         with ConsulServiceController().start_service() as service:
             consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
-        self.assertRaises(ConsulConnectionError, consul_lock.acquire, TEST_KEY)
+            found_locks = consul_lock.find(f"{TEST_KEY}_[0-9]+")
+            self.assertEqual(0, len(found_locks))
+
+    def test_find_when_locks(self):
+        interesting_keys = [f"{TEST_KEY_DIRECTORY}{KEY_DIRECTORY_SEPARATOR}{TEST_KEY}{KEY_DIRECTORY_SEPARATOR}{i}"
+                            for i in range(5)]
+        other_keys = [TEST_KEY, f"other{TEST_KEY_DIRECTORY}", f"{TEST_KEY}_1a", f"{TEST_KEY}_"]
+        with ConsulServiceController().start_service() as service:
+            consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+            for key in interesting_keys + other_keys:
+                lock = consul_lock.acquire(key)
+                assert isinstance(lock, ConsulLockInformation)
+            found_locks = consul_lock.find(
+                f"{TEST_KEY_DIRECTORY}{KEY_DIRECTORY_SEPARATOR}{TEST_KEY}{KEY_DIRECTORY_SEPARATOR}[0-9]+")
+            self.assertCountEqual(interesting_keys, [lock.key for lock in found_locks.values()])
+
+    def test_find_when_locks_and_other_key(self):
+        key_1 = f"{TEST_KEY_DIRECTORY}{KEY_DIRECTORY_SEPARATOR}{TEST_KEY}"
+        key_2 = f"{TEST_KEY_DIRECTORY}{KEY_DIRECTORY_SEPARATOR}{TEST_KEY_2}"
+        with ConsulServiceController().start_service() as service:
+            consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+            test_lock = consul_lock.acquire(key_1)
+            service.create_consul_client().kv.put(key_2, "thing")
+            found_locks = consul_lock.find(f"{TEST_KEY_DIRECTORY}{KEY_DIRECTORY_SEPARATOR}.*")
+            self.assertEqual(2, len(found_locks))
+            self.assertEqual(found_locks[key_1], test_lock)
+            self.assertIsNone(found_locks[key_2])
 
 
 del BaseLockTest
