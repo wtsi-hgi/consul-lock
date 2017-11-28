@@ -89,13 +89,13 @@ class TestCli(BaseLockTest):
         with ConsulServiceController().start_service() as service:
             unlock_result = TestCli._unlocker(TEST_KEY, service)
         self.assertEqual(SUCCESS_EXIT_CODE, unlock_result.exception.code)
-        self.assertFalse(json.loads(unlock_result.stdout))
+        self.assertIsNone(json.loads(unlock_result.stdout))
 
     def test_unlock_when_locked(self):
         lock_result, unlock_result = double_action(TestCli._create_locker(), TestCli._unlocker)
         assert lock_result.exception.code == SUCCESS_EXIT_CODE
         self.assertEqual(SUCCESS_EXIT_CODE, unlock_result.exception.code)
-        self.assertTrue(json.loads(unlock_result.stdout))
+        self.assertEqual(TEST_KEY, json.loads(unlock_result.stdout))
 
     def test_help(self):
         captured_result = all_capture_builder.build(main)(["-h"])

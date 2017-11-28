@@ -83,13 +83,13 @@ class TestConsulLockManager(BaseLockTest):
     def test_unlock_when_unlocked(self):
         with ConsulServiceController().start_service() as service:
             unlock_result = TestConsulLockManager._unlocker(TEST_KEY, service)
-        self.assertFalse(unlock_result.return_value)
+        self.assertIsNone(unlock_result.return_value)
 
     def test_unlock_when_locked(self):
         lock_result, unlock_result = double_action(
             TestConsulLockManager._create_locker(), TestConsulLockManager._unlocker)
         assert isinstance(lock_result.return_value, ConsulLockInformation)
-        self.assertTrue(unlock_result.return_value)
+        self.assertEqual(TEST_KEY, unlock_result.return_value)
 
     def test_unlock_all(self):
         test_keys = [f"{TEST_KEY}_{i}" for i in range(5)]

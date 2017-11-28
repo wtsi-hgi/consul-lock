@@ -11,18 +11,21 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, \
-    PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE
+    PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, DEFAULT_REGEX_KEY_ENABLED
+from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, DoubleSlashKeyError, \
+    InvalidEnvironmentVariableError, InvalidSessionTtlValueError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
 from consullock.managers import ConsulLockManager
-from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, InvalidKeyError, \
-    DoubleSlashKeyError, InvalidEnvironmentVariableError, InvalidSessionTtlValueError
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
 VERBOSE_CLI_SHORT_PARAMETER = "v"
+REGEX_KEY_ENABLED_SHORT_PARAMETER = "r"
 NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
 TIMEOUT_CLI_lONG_PARAMETER = "timeout"
+
 METHOD_CLI_PARAMETER_ACCESS = "method"
+
 NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE = 0
 
 _NO_DEFAULT_SENTINEL = object()
@@ -55,6 +58,7 @@ class CliConfiguration(NamedTuple):
     log_verbosity: int = DEFAULT_LOG_VERBOSITY
     non_blocking: bool = DEFAULT_NON_BLOCKING
     timeout: float = DEFAULT_TIMEOUT
+    regex_key_enabled: bool = DEFAULT_REGEX_KEY_ENABLED
 
 
 def _create_parser() -> ArgumentParser:
@@ -69,6 +73,9 @@ def _create_parser() -> ArgumentParser:
     subparsers = parser.add_subparsers(dest=METHOD_CLI_PARAMETER_ACCESS, help="action")
 
     unlock_subparser = subparsers.add_parser(Action.UNLOCK.value, help="release a lock")
+    unlock_subparser.add_argument(
+        f"-{REGEX_KEY_ENABLED_SHORT_PARAMETER}", action="store_true", default=DEFAULT_REGEX_KEY_ENABLED,
+        help="Whether the key should be treated as a regular expression and to release all matching locks")
 
     lock_subparser = subparsers.add_parser(Action.LOCK.value, help="acquire a lock")
     lock_subparser.add_argument(
@@ -111,10 +118,12 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
         key=_get_parameter_argument(KEY_CLI_PARAMETER, parsed_arguments),
         session_ttl=session_ttl,
         log_verbosity=_get_verbosity(parsed_arguments),
-        # TODO: If config for release, these values are meaningless! Should be differnent subclass with no need "default"
+        # TODO: If config for release, these values are meaningless! Should be different subclass with no need "default"
         non_blocking=_get_parameter_argument(
             NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
-        timeout=_get_parameter_argument(TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT))
+        timeout=_get_parameter_argument(TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT),
+        regex_key_enabled=_get_parameter_argument(
+            REGEX_KEY_ENABLED_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_REGEX_KEY_ENABLED))
 
 
 def _get_verbosity(parsed_arguments: Namespace) -> int:

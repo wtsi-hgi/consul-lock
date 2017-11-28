@@ -5,7 +5,7 @@ from datetime import datetime
 from json import JSONDecodeError
 from threading import Lock
 from time import sleep
-from typing import Callable, Optional, Any, Set, List, Collection, Dict
+from typing import Callable, Optional, Any, Set, List, Collection, Dict, Sequence
 
 import os
 import requests
@@ -158,13 +158,13 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def release(self, key: str) -> bool:
+    def release(self, key: str) -> Optional[str]:
         """
         Release the lock.
 
         Noop if not locked.
         :param key: TODO
-        :return: whether a lock has been released
+        :return: TODO
         :raises InvalidKeyError: if the `key` is not valid
         """
         ConsulLockManager.validate_key(key)
@@ -172,7 +172,7 @@ class ConsulLockManager:
         key_value = self.consul_client.kv.get(key)[1]
         if key_value is None:
             logger.info(f"No lock found")
-            return False
+            return None
 
         lock_information = json.loads(key_value["Value"].decode("utf-8"), cls=ConsulLockInformationJSONDecoder)
         logger.info(f"Destroying the session {lock_information.session_id} that is holding the lock")
@@ -184,20 +184,31 @@ class ConsulLockManager:
             pass
 
         logger.info("Unlocked" if unlocked else "Went to unlock but was already released upon sending request")
-        return unlocked
+        return key
 
     @_exception_converter
     @_raise_if_teardown_called
-    def release_all(self, keys: List[str]) -> List[bool]:
+    def release_regex(self, key_regex: str) -> Set[str]:
+        """
+        TODO
+        :param key_regex:
+        :return:
+        """
+        keys = list(self.find(key_regex).keys())
+        return self.release_all(keys)
+
+    @_exception_converter
+    @_raise_if_teardown_called
+    def release_all(self, keys: Sequence[str]) -> Set[str]:
         """
         Releases all of the given keys.
         :param keys: the keys to release
-        :return: whether the keys were released
+        :return: TODO
         """
-        released: List[bool] = []
+        released: List[str] = []
         for key in keys:
             released.append(self.release(key))
-        return released
+        return set(filter(None,released))
 
     @_exception_converter
     @_raise_if_teardown_called
