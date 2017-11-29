@@ -159,3 +159,9 @@ class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
         """
         Tests that a lock can be unlocked when locked.
         """
+
+    @abstractmethod
+    def test_unlock_with_regex(self):
+        """
+        Test unlocking locks with a name matching a regular expression.
+        """

@@ -110,13 +110,13 @@ class TestConsulLockManager(BaseLockTest):
     def test_find_when_no_locks(self):
         with ConsulServiceController().start_service() as service:
             consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
-            found_locks = consul_lock.find(f"{TEST_KEY}_[0-9]+")
+            found_locks = consul_lock.find(f"{TEST_KEY}{KEY_DIRECTORY_SEPARATOR}[0-9]+")
             self.assertEqual(0, len(found_locks))
 
     def test_find_when_locks(self):
         interesting_keys = [f"{TEST_KEY_DIRECTORY}{KEY_DIRECTORY_SEPARATOR}{TEST_KEY}{KEY_DIRECTORY_SEPARATOR}{i}"
                             for i in range(5)]
-        other_keys = [TEST_KEY, f"other{TEST_KEY_DIRECTORY}", f"{TEST_KEY}_1a", f"{TEST_KEY}_"]
+        other_keys = [TEST_KEY, f"other{TEST_KEY_DIRECTORY}", f"{TEST_KEY}{KEY_DIRECTORY_SEPARATOR}1a", f"{TEST_KEY}0"]
         with ConsulServiceController().start_service() as service:
             consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
             for key in interesting_keys + other_keys:
@@ -132,11 +132,15 @@ class TestConsulLockManager(BaseLockTest):
         with ConsulServiceController().start_service() as service:
             consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
             test_lock = consul_lock.acquire(key_1)
-            service.create_consul_client().kv.put(key_2, "thing")
+            service.create_consul_client().kv.put(key_2, "unrelated")
             found_locks = consul_lock.find(f"{TEST_KEY_DIRECTORY}{KEY_DIRECTORY_SEPARATOR}.*")
             self.assertEqual(2, len(found_locks))
             self.assertEqual(found_locks[key_1], test_lock)
             self.assertIsNone(found_locks[key_2])
+
+    # def test_unlock_with_regex(self):
+    #     with ConsulServiceController().start_service() as service:
+    #         consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
 
 
 del BaseLockTest
