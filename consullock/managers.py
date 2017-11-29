@@ -107,6 +107,7 @@ class ConsulLockManager:
             raise ValueError("Either `consul_configuration` xor `consul_client` must be given")
 
         self.consul_client = consul_client or create_consul_client(consul_configuration)
+        logger.debug(f"Consul configuration: {consul_configuration}")
         self.session_ttl_in_seconds = session_ttl_in_seconds
         self.lock_poll_interval_generator = lock_poll_interval_generator
         self._acquiring_session_ids: Set[Session] = set()
@@ -129,6 +130,7 @@ class ConsulLockManager:
         """
         ConsulLockManager.validate_key(key)
 
+        logger.debug("Creating Consul session...")
         session_id = self.consul_client.session.create(
             lock_delay=0, ttl=self.session_ttl_in_seconds, behavior="delete")
         self._acquiring_session_ids.add(session_id)
@@ -270,6 +272,7 @@ class ConsulLockManager:
         """
         lock_information = ConsulLockInformation(key, session_id, datetime.utcnow())
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
+        logger.debug(f"Attemping to acquire lock with value: {value}")
         try:
             success = self.consul_client.kv.put(key=key, value=value, acquire=session_id)
         except ConsulException as e:
@@ -277,5 +280,3 @@ class ConsulLockManager:
                 raise SessionLostConsulError() from e
             raise e
         return lock_information if success else None
-
-
