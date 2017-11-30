@@ -1,6 +1,6 @@
 class ConsulLockBaseError(Exception):
     """
-    TODO
+    Base exception of all exceptions raised by this package.
     """
 
 
@@ -51,7 +51,7 @@ class DoubleSlashKeyError(InvalidKeyError):
 
 class InvalidEnvironmentVariableError(ConsulLockBaseError):
     """
-    TODO
+    Raised if an environment variable has an invalid value.
     """
     def __init__(self, message: str, variable: str):
         super().__init__(message)
@@ -60,5 +60,5 @@ class InvalidEnvironmentVariableError(ConsulLockBaseError):
 
 class InvalidSessionTtlValueError(ConsulLockBaseError):
     """
-    TODO
+    Raised if a Consul session TTL is invalid (e.g. too high or too low).
     """

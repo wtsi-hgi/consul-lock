@@ -64,8 +64,8 @@ class CliConfiguration(NamedTuple):
 
 def _create_parser() -> ArgumentParser:
     """
-    TODO
-    :return:
+    Creates argument parser for the CLI.
+    :return: the argument parser
     """
     parser = ArgumentParser(description=DESCRIPTION)
     parser.add_argument(
@@ -159,6 +159,8 @@ def _get_parameter_argument(parameter: str, parsed_arguments: Namespace, default
 def main(cli_arguments: List[str]):
     """
     Entrypoint.
+    :param cli_arguments: arguments passed in via the CLI
+    :raises SystemExit: always raised
     """
     try:
         cli_configuration = parse_cli_configration(cli_arguments)
@@ -208,10 +210,10 @@ def main(cli_arguments: List[str]):
 
         elif cli_configuration.action == Action.UNLOCK:
             if cli_configuration.regex_key_enabled:
-                release_information = list(lock_manager.release_regex(key_regex=cli_configuration.key))
+                release_information = sorted(list(lock_manager.release_regex(key_regex=cli_configuration.key)))
             else:
                 release_information = lock_manager.release(key=cli_configuration.key)
-            print(json.dumps(sorted(release_information)))
+            print(json.dumps(release_information))
 
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \

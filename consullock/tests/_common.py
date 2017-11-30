@@ -21,7 +21,7 @@ all_capture_builder = CaptureWrapBuilder(True, True, True)
 
 def set_consul_env(service: ConsulDockerisedService):
     """
-    TODO
+    Sets environment variables such that communication to Consul is possible using the information in the environment.
     :param service:
     :return:
     """
