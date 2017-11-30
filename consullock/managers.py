@@ -42,7 +42,7 @@ def _exception_converter(callable: Callable) -> Callable:
             raise e
         except ACLPermissionDenied as e:
             raise PermissionDeniedConsulError() from e
-        except Exception as e:
+        except ConsulException as e:
             raise ConsulConnectionError() from e
     return wrapped
 
