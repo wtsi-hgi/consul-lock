@@ -18,19 +18,19 @@ LockActionCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
 LockerCallable = LockActionCallable
 UnlockerCallable = LockActionCallable
 
-DEFAULT_LOCK_INIT_ARGS_GENERATOR = lambda key, service: []
-DEFAULT_LOCK_INIT_KWARGS_GENERATOR = lambda key, service: dict(consul_client=service.create_consul_client())
 DEFAULT_LOCK_ACQUIRE_TIMEOUT = 0.5
 
 MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR = MIN_LOCK_TIMEOUT_IN_SECONDS * 5.0
 DOUBLE_SLASH_KEY = "my//key"
 
 
-def acquire_locks(locker: LockerCallable, keys: List[str]=None) -> List[CaptureResult]:
+def acquire_locks(locker: LockerCallable, keys: List[str]=None,
+                  on_complete: Callable[[ConsulDockerisedService], None]=None) -> List[CaptureResult]:
     """
     Test getting locks.
     :param locker: method that locks Consul
-    :param keys: the keys of the locks to acquire (in order). Will use single test key if not defined
+    :param keys: optional keys of the locks to acquire (in order). Will use single test key if not defined
+    :param on_complete: optional method to call before the service is taken down
     :return: the result of the lock acquisitions
     """
     if keys is None:
@@ -39,6 +39,8 @@ def acquire_locks(locker: LockerCallable, keys: List[str]=None) -> List[CaptureR
     with ConsulServiceController().start_service() as service:
         for key in keys:
             lock_results.append(locker(key, service))
+        if on_complete is not None:
+            on_complete(service)
         return lock_results
 
 
@@ -76,8 +78,8 @@ def action_when_locked(action: LockActionCallable, timeout: float=DEFAULT_LOCK_A
     :raise timeout_decorator.TimeoutError: if block on lock times out
     """
     def first_locker(key: str, service: ConsulDockerisedService) -> CaptureResult:
-        consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
-        lock_information = consul_lock.acquire(TEST_KEY)
+        lock_manager = ConsulLockManager(consul_client=service.create_consul_client())
+        lock_information = lock_manager.acquire(TEST_KEY)
         return CaptureResult(return_value=lock_information)
 
     def first_lock_callback(lock_result: CaptureResult):
