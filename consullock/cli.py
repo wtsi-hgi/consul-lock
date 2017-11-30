@@ -10,8 +10,9 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     DEFAULT_TIMEOUT, SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     INVALID_CLI_ARGUMENT_EXIT_CODE, PERMISSION_DENIED_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, \
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
-    get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, \
-    PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, DEFAULT_REGEX_KEY_ENABLED
+    get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, \
+    PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, DEFAULT_REGEX_KEY_ENABLED, \
+    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE
 from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, DoubleSlashKeyError, \
     InvalidEnvironmentVariableError, InvalidSessionTtlValueError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
@@ -35,7 +36,7 @@ logger = create_logger(__name__)
 
 class InvalidCliArgumentError(Exception):
     """
-    Raised when an invalid CLI argument has been givne.
+    Raised when an invalid CLI argument has been given.
     """
 
 
@@ -180,7 +181,7 @@ def main(cli_arguments: List[str]):
         exit(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
 
     try:
-        consul_lock = ConsulLockManager(
+        lock_manager = ConsulLockManager(
             consul_configuration=consul_configuration,
             session_ttl_in_seconds=cli_configuration.session_ttl)
     except InvalidSessionTtlValueError as e:
@@ -190,8 +191,9 @@ def main(cli_arguments: List[str]):
     try:
         if cli_configuration.action == Action.LOCK:
             try:
-                lock_information = consul_lock.acquire(
-                    key=cli_configuration.key, blocking=not cli_configuration.non_blocking, timeout=cli_configuration.timeout)
+                lock_information = lock_manager.acquire(
+                    key=cli_configuration.key, blocking=not cli_configuration.non_blocking,
+                    timeout=cli_configuration.timeout)
             except LockAcquireTimeoutError as e:
                 logger.debug(e)
                 logger.error(f"Timed out whilst waiting to acquire lock: {cli_configuration.key}")
@@ -205,8 +207,11 @@ def main(cli_arguments: List[str]):
                 exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
 
         elif cli_configuration.action == Action.UNLOCK:
-            release_information = consul_lock.release(key=cli_configuration.key)
-            print(json.dumps(release_information))
+            if cli_configuration.regex_key_enabled:
+                release_information = list(lock_manager.release_regex(key_regex=cli_configuration.key))
+            else:
+                release_information = lock_manager.release(key=cli_configuration.key)
+            print(json.dumps(sorted(release_information)))
 
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \

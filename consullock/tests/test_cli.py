@@ -113,7 +113,7 @@ class TestCli(BaseLockTest):
             captured_result = all_capture_builder.build(main)(
                 [Action.UNLOCK.value, f"-{REGEX_KEY_ENABLED_SHORT_PARAMETER}", TEST_KEYS_REGEX])
             self.assertEqual(SUCCESS_EXIT_CODE, captured_result.exception.code)
-            self.assertCountEqual(TEST_KEYS, captured_result.stdout)
+            self.assertCountEqual(TEST_KEYS, json.loads(captured_result.stdout))
 
         acquire_locks(TestCli._build_executor(Action.LOCK), TEST_KEYS + TEST_KEYS_2, release)
 
