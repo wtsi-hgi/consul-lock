@@ -21,7 +21,7 @@ setup(
     long_description=read_markdown("README.md"),
     entry_points={
         "console_scripts": [
-            f"{EXECUTABLE_NAME}=consullock.cli:main"
+            f"{EXECUTABLE_NAME}=consullock.cli:entrypoint"
         ]
     },
     zip_safe=True

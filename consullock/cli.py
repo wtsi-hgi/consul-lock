@@ -231,5 +231,12 @@ def main(cli_arguments: List[str]):
     exit(SUCCESS_EXIT_CODE)
 
 
-if __name__ == "__main__":
+def entrypoint():
+    """
+    Entrypoint to be used by CLI.
+    """
     main(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    entrypoint()
