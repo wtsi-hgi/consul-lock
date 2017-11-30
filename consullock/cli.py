@@ -76,7 +76,7 @@ def _create_parser() -> ArgumentParser:
     unlock_subparser = subparsers.add_parser(Action.UNLOCK.value, help="release a lock")
     unlock_subparser.add_argument(
         f"-{REGEX_KEY_ENABLED_SHORT_PARAMETER}", action="store_true", default=DEFAULT_REGEX_KEY_ENABLED,
-        help="Whether the key should be treated as a regular expression and to release all matching locks")
+        help="whether the key should be treated as a regular expression and to release all matching locks")
 
     lock_subparser = subparsers.add_parser(Action.LOCK.value, help="acquire a lock")
     lock_subparser.add_argument(

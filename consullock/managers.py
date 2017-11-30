@@ -249,6 +249,7 @@ class ConsulLockManager:
 
         The instance must not be used after this method has been called.
         """
+        return
         with self._teardown_lock:
             if not self._teardown_called:
                 self._teardown_called = True
