@@ -1,6 +1,6 @@
 from consul import Consul
 
-from consullock.configuration import ConsulConfiguration
+from consullock.configuration import ConsulConfiguration, DEFAULT_CONSUL_PORT
 
 
 def create_consul_client(consul_configuration: ConsulConfiguration) -> Consul:

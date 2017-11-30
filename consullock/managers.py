@@ -1,13 +1,13 @@
 import atexit
 import json
+import os
 import re
 from datetime import datetime
 from json import JSONDecodeError
 from threading import Lock
 from time import sleep
-from typing import Callable, Optional, Any, Set, List, Collection, Dict, Sequence
+from typing import Callable, Optional, Any, Set, List, Dict, Sequence
 
-import os
 import requests
 from consul import Consul
 from consul.base import ACLPermissionDenied, ConsulException
@@ -80,10 +80,9 @@ class ConsulLockManager:
     @staticmethod
     def validate_key(key: str):
         """
-        TODO
-        :param key:
-        :return:
-        :raises InvalidKeyError:
+        Validates the given key.
+        :param key: the key to validate
+        :raises InvalidKeyError: raised if the given key is invalid
         """
         if "//" in key:
             raise DoubleSlashKeyError(key)
@@ -258,7 +257,7 @@ class ConsulLockManager:
                         self.consul_client.session.destroy(session_id=session_id)
                         logger.debug(f"Destroyed: {session_id}")
                     except requests.exceptions.ConnectionError as e:
-                        logger.debug(e)
+                        logger.debug(f"Exception: {e}")
                         logger.warning(f"Could not connect to Consul to clean up session {session_id}")
                 atexit.unregister(self.teardown)
 
@@ -272,7 +271,7 @@ class ConsulLockManager:
         """
         lock_information = ConsulLockInformation(key, session_id, datetime.utcnow())
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
-        logger.debug(f"Attemping to acquire lock with value: {value}")
+        logger.debug(f"Attempting to acquire lock with value: {value}")
         try:
             success = self.consul_client.kv.put(key=key, value=value, acquire=session_id)
         except ConsulException as e:

@@ -1,11 +1,9 @@
 import os
-import unittest
-from copy import deepcopy
 
 from capturewrap import CaptureWrapBuilder
-from consullock.configuration import DEFAULT_CONSUL_PORT, CONSUL_HOST_ENVIRONMENT_VARIABLE, \
-    CONSUL_PORT_ENVIRONMENT_VARIABLE
-from useintest.predefined.consul import ConsulServiceController, ConsulDockerisedService
+from useintest.predefined.consul import ConsulDockerisedService
+
+from consullock.configuration import DEFAULT_CONSUL_PORT, CONSUL_ADDRESS_ENVIRONMENT_VARIABLE
 
 TEST_KEY_DIRECTORY = "my"
 TEST_KEY = "hello"
@@ -21,6 +19,4 @@ def set_consul_env(service: ConsulDockerisedService):
     :param service:
     :return:
     """
-    os.environ[CONSUL_HOST_ENVIRONMENT_VARIABLE] = service.host
-    os.environ[CONSUL_PORT_ENVIRONMENT_VARIABLE] = str(service.ports[DEFAULT_CONSUL_PORT])
-
+    os.environ[CONSUL_ADDRESS_ENVIRONMENT_VARIABLE] = f"{service.host}:{service.ports[DEFAULT_CONSUL_PORT]}"

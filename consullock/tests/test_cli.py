@@ -108,9 +108,10 @@ class TestCli(BaseLockTest):
             main([Action.UNLOCK.value, TEST_KEY])
         self.assertEqual(MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, e.exception.code)
 
-    # def test_unlock_with_regex(self):
-    #     with ConsulServiceController().start_service() as service:
-    #         consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+    def test_unlock_with_regex(self):
+        # with ConsulServiceController().start_service() as service:
+        #     consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+        pass
 
 
 del BaseLockTest

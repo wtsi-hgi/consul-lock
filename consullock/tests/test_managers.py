@@ -138,9 +138,10 @@ class TestConsulLockManager(BaseLockTest):
             self.assertEqual(found_locks[key_1], test_lock)
             self.assertIsNone(found_locks[key_2])
 
-    # def test_unlock_with_regex(self):
-    #     with ConsulServiceController().start_service() as service:
-    #         consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+    def test_unlock_with_regex(self):
+        # with ConsulServiceController().start_service() as service:
+        #     consul_lock = ConsulLockManager(consul_client=service.create_consul_client())
+        pass
 
 
 del BaseLockTest

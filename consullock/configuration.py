@@ -2,6 +2,7 @@ import logging
 import os
 from typing import NamedTuple
 
+
 PACKAGE_NAME = "consullock"
 DESCRIPTION = "Tool to use locks in Consul"
 EXECUTABLE_NAME = "consul-lock"
@@ -11,11 +12,11 @@ MIN_LOCK_TIMEOUT_IN_SECONDS = 10
 MAX_LOCK_TIMEOUT_IN_SECONDS = 86400
 
 DEFAULT_SESSION_TTL = MAX_LOCK_TIMEOUT_IN_SECONDS
+DEFAULT_CONSUL_PORT = 8500
 DEFAULT_LOG_VERBOSITY = logging.WARN
 DEFAULT_NON_BLOCKING = False
 DEFAULT_TIMEOUT = 0.0
 DEFAULT_REGEX_KEY_ENABLED = False
-DEFAULT_CONSUL_PORT = 8500
 DEFAULT_CONSUL_TOKEN = None
 DEFAULT_CONSUL_SCHEME = "http"
 DEFAULT_CONSUL_DATACENTRE = None
@@ -32,13 +33,24 @@ INVALID_KEY_EXIT_CODE = 6
 INVALID_SESSION_TTL_EXIT_CODE = 7
 UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE = 100
 
-CONSUL_HOST_ENVIRONMENT_VARIABLE = "CONSUL_HOST"
-CONSUL_PORT_ENVIRONMENT_VARIABLE = "CONSUL_PORT"
-CONSUL_TOKEN_ENVIRONMENT_VARIABLE = "CONSUL_TOKEN"
+CONSUL_ADDRESS_ENVIRONMENT_VARIABLE = "CONSUL_HTTP_ADDR"
+CONSUL_TOKEN_ENVIRONMENT_VARIABLE = "CONSUL_HTTP_TOKEN"
 CONSUL_SCHEME_ENVIRONMENT_VARIABLE = "CONSUL_SCHEME"
 CONSUL_DATACENTRE_ENVIRONMENT_VARIABLE = "CONSUL_DC"
-CONSUL_VERIFY_ENVIRONMENT_VARIABLE = "CONSUL_VERIFY"
-CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE = "CONSUL_CERT"
+CONSUL_VERIFY_ENVIRONMENT_VARIABLE = "CONSUL_HTTP_SSL_VERIFY"
+CONSUL_CERTIFICATE_ENVIRONMENT_VARIABLE = "CONSUL_CLIENT_CERT"
+
+
+# Workaround for cyclic dependency when using logger in this module
+def _get_logger():
+    global _logger
+    if _logger is None:
+        from consullock._logging import create_logger
+        _logger = create_logger(__name__)
+    return _logger
+
+
+_logger = None
 
 
 class ConsulConfiguration(NamedTuple):
@@ -60,14 +72,23 @@ def get_consul_configuration_from_environment() -> ConsulConfiguration:
     :return: configuration
     :raises KeyError: if a required environment variable has not been set
     """
-    host = os.environ[CONSUL_HOST_ENVIRONMENT_VARIABLE]
-    if "://" in host:
+    address = os.environ[CONSUL_ADDRESS_ENVIRONMENT_VARIABLE]
+    if "://" in address:
         raise EnvironmentError(
-            f"Invalid host: {host}. Do not specify scheme in host - set that in {CONSUL_SCHEME_ENVIRONMENT_VARIABLE}")
+            f"Invalid host: {address}. Do not specify scheme in host - set that in {CONSUL_SCHEME_ENVIRONMENT_VARIABLE}")
+
+    host_port_split = address.split(":")
+    host = host_port_split[0]
+    if len(host_port_split) == 1:
+        _get_logger().info(
+            f"No port specified in address read from the environment - using default port: {DEFAULT_CONSUL_PORT}")
+        port = DEFAULT_CONSUL_PORT
+    else:
+        port = host_port_split[1]
 
     return ConsulConfiguration(
         host=host,
-        port=os.environ.get(CONSUL_PORT_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_PORT),
+        port=port,
         token=os.environ.get(CONSUL_TOKEN_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_TOKEN),
         scheme=os.environ.get(CONSUL_SCHEME_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_SCHEME),
         datacentre=os.environ.get(CONSUL_DATACENTRE_ENVIRONMENT_VARIABLE, DEFAULT_CONSUL_DATACENTRE),
