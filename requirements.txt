@@ -1,3 +1,3 @@
-python-consul
-timeout-decorator
-hgijson
+python-consul>=0.7.2
+timeout-decorator>=0.4.0
+hgijson>=1.5.0
