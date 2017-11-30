@@ -1,13 +1,13 @@
 from consul import Consul
 
-from consullock.configuration import ConsulConfiguration, DEFAULT_CONSUL_PORT
+from consullock.configuration import ConsulConfiguration
 
 
 def create_consul_client(consul_configuration: ConsulConfiguration) -> Consul:
     """
-    TODO
-    :param consul_configuration:
-    :return:
+    Creates a Consul client using the given configuration.
+    :param consul_configuration: the configuration to use to create the client
+    :return: the created client
     """
     consul_client = Consul(
         host=consul_configuration.host,

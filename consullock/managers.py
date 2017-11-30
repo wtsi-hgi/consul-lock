@@ -62,7 +62,7 @@ def _raise_if_teardown_called(callable: Callable) -> Callable:
 
 class ConsulLockManager:
     """
-    TODO
+    Manager of Consul locks.
     """
     @staticmethod
     def validate_session_ttl(session_timeout_in_seconds: float):
@@ -91,11 +91,11 @@ class ConsulLockManager:
                  lock_poll_interval_generator: Callable[[], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR,
                  consul_client: Consul=None):
         """
-        TODO
-        :param consul_configuration:
-        :param session_ttl_in_seconds:
-        :param lock_poll_interval_generator:
-        :param consul_client:
+        Constructor.
+        :param consul_configuration: configuration used to connect to Consul (required if `consul_client` is not given)
+        :param session_ttl_in_seconds: the TTL of Consul sessions
+        :param lock_poll_interval_generator: generator of the interval between Consul lock polls
+        :param consul_client: client used to connect to Consul (required if `consul_configuration` is not given)
         :raises InvalidSessionTtlValueError: if the `session_ttl_in_seconds` is not valid
         """
         if session_ttl_in_seconds is not None:
@@ -120,12 +120,13 @@ class ConsulLockManager:
     @_raise_if_teardown_called
     def acquire(self, key: str, blocking: bool=True, timeout: float=None) -> Optional[ConsulLockInformation]:
         """
-        TODO
-        :param key:
-        :param blocking:
+        Acquires a Consul lock.
+        :param key: the lock key
+        :param blocking: whether to block and wait for the lock
         :param timeout: timeout in seconds
-        :return:
-        :raises InvalidKeyError: if the `key` is not valid
+        :return: information about the lock if acquired, else `None` if not acquired and not blocking
+        :raises InvalidKeyError: raised if the given key is not valid
+        :raises LockAcquireTimeoutError: raised if times out waiting for the lock
         """
         ConsulLockManager.validate_key(key)
 
@@ -164,8 +165,8 @@ class ConsulLockManager:
         Release the lock.
 
         Noop if not locked.
-        :param key: TODO
-        :return: TODO
+        :param key: the name of the lock to release
+        :return: the name of the released lock, or `None` if no lock was released
         :raises InvalidKeyError: if the `key` is not valid
         """
         ConsulLockManager.validate_key(key)
@@ -191,9 +192,9 @@ class ConsulLockManager:
     @_raise_if_teardown_called
     def release_regex(self, key_regex: str) -> Set[str]:
         """
-        TODO
-        :param key_regex:
-        :return:
+        Releases all locks with names that that match the given regular expression.
+        :param key_regex: Python regular expression that captures the names of the locks that are to be released
+        :return: the names of the locks that were released
         """
         keys = list(self.find(key_regex).keys())
         return self.release_all(keys)
@@ -204,7 +205,7 @@ class ConsulLockManager:
         """
         Releases all of the given keys.
         :param keys: the keys to release
-        :return: TODO
+        :return: the names of the keys that were released
         """
         released: List[str] = []
         for key in keys:
@@ -264,7 +265,7 @@ class ConsulLockManager:
     def _acquire_lock(self, key: str, session_id: str) -> Optional[ConsulLockInformation]:
         """
         Attempts to get the lock using the given session.
-        :param key: TODO
+        :param key: name of the lock
         :param session_id: the identifier of the Consul session that should try to hold the lock
         :return: details about the lock if acquired, else `None`
         :raises SessionLostConsulError: if the Consul session is lost

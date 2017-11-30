@@ -22,7 +22,6 @@ all_capture_builder = CaptureWrapBuilder(True, True, True)
 def set_consul_env(service: ConsulDockerisedService):
     """
     Sets environment variables such that communication to Consul is possible using the information in the environment.
-    :param service:
-    :return:
+    :param service: Dockerized Consul service that is to be connected to
     """
     os.environ[CONSUL_ADDRESS_ENVIRONMENT_VARIABLE] = f"{service.host}:{service.ports[DEFAULT_CONSUL_PORT]}"

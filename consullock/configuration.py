@@ -68,8 +68,8 @@ class ConsulConfiguration(NamedTuple):
 
 def get_consul_configuration_from_environment() -> ConsulConfiguration:
     """
-    Gets credentials to use Consul from the environment.
-    :return: configuration
+    Gets configuration on how to connect to Consul from the environment.
+    :return: the configuration derived from the environment
     :raises KeyError: if a required environment variable has not been set
     """
     address = os.environ[CONSUL_ADDRESS_ENVIRONMENT_VARIABLE]

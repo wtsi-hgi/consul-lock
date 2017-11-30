@@ -48,12 +48,14 @@ def double_action(first_action: LockActionCallable, second_action: LockActionCal
                   second_action_timeout: float=DEFAULT_LOCK_ACQUIRE_TIMEOUT,
                   first_action_callback: Callable[[CaptureResult], Any]=None) -> Tuple[CaptureResult, CaptureResult]:
     """
-    TODO
-    :param first_action:
-    :param second_action:
-    :param second_action_timeout:
-    :return:
-    :raises TestActionTimeoutError:
+    Do two consecutive actions.
+    :param first_action: first action to execute
+    :param second_action: second action to execute
+    :param second_action_timeout: timeout in seconds of the second action
+    :param first_action_callback: optional callback after first action that is given the result of the first action
+    :return: tuple where the first value is the captured result of the first action and the second is the captured
+    result of the second action
+    :raises TestActionTimeoutError: raised if the second action times out
     """
     with ConsulServiceController().start_service() as service:
         first_action_result = first_action(TEST_KEY, service)
@@ -97,7 +99,7 @@ class TestActionTimeoutError(ConsulLockBaseError):
 
 class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
     """
-    TODO
+    Base class for all interfaces that can be used to manage Consul locks.
     """
     def setUp(self):
         self._consul_service_controller = ConsulServiceController()
