@@ -148,7 +148,7 @@ lock_manager.release_all("my/lock-1", "my/lock-2", "my/lock-3")
 
 # Release locks with key matching regex
 lock_manager.release_regex("my/.*")
- ```
+```
 
 
 ## Development
