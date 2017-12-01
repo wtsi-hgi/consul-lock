@@ -137,13 +137,16 @@ class ConsulLockManager:
         logger.info(f"Created session with ID: {session_id}")
 
         @timeout_decorator.timeout(timeout, timeout_exception=LockAcquireTimeoutError)
-        def _acquire() -> ConsulLockInformation:
+        def _acquire() -> Optional[ConsulLockInformation]:
             while True:
                 logger.debug("Going to acquire lock")
                 lock_information = self._acquire_lock(key, session_id)
-                if lock_information is not None or not blocking:
+                if lock_information is not None:
                     logger.debug("Acquired lock!")
                     return lock_information
+                elif not blocking:
+                    logger.debug("Could not acquire lock (already locked) and not blocking")
+                    return None
                 else:
                     logger.debug("Could not acquire lock (already locked)")
                 interval = self.lock_poll_interval_generator()
@@ -151,9 +154,10 @@ class ConsulLockManager:
                 sleep(interval)
 
         lock_information = _acquire()
+        self._acquiring_session_ids.remove(session_id)
+
         if lock_information is None:
             self.consul_client.session.destroy(session_id=session_id)
-            self._acquiring_session_ids.remove(session_id)
             logger.info(f"Destroyed session (did not acquire the lock)")
 
         return lock_information
