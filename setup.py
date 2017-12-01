@@ -12,7 +12,7 @@ except ImportError:
 
 setup(
     name=PACKAGE_NAME,
-    version="1.0.0b0",
+    version="1.0.0",
     packages=find_packages(exclude=["tests"]),
     install_requires=open("requirements.txt", "r").readlines(),
     url="https://github.com/wtsi-hgi/consul-lock",
