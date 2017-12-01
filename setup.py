@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-from consullock.configuration import PACKAGE_NAME, DESCRIPTION, EXECUTABLE_NAME
+from consullock.configuration import PACKAGE_NAME, DESCRIPTION, EXECUTABLE_NAME, VERSION
 
 try:
     from pypandoc import convert
@@ -12,7 +12,7 @@ except ImportError:
 
 setup(
     name=PACKAGE_NAME,
-    version="1.0.0",
+    version=VERSION,
     packages=find_packages(exclude=["tests"]),
     install_requires=open("requirements.txt", "r").readlines(),
     url="https://github.com/wtsi-hgi/consul-lock",

@@ -4,7 +4,8 @@ from typing import NamedTuple
 
 
 PACKAGE_NAME = "consullock"
-DESCRIPTION = "Tool to use locks in Consul"
+VERSION = "1.0.0"
+DESCRIPTION = f"Tool to use locks in Consul (v{VERSION})"
 EXECUTABLE_NAME = "consul-lock"
 
 DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 1.0
