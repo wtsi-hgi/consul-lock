@@ -74,8 +74,8 @@ def get_consul_configuration_from_environment() -> ConsulConfiguration:
     """
     address = os.environ[CONSUL_ADDRESS_ENVIRONMENT_VARIABLE]
     if "://" in address:
-        raise EnvironmentError(
-            f"Invalid host: {address}. Do not specify scheme in host - set that in {CONSUL_SCHEME_ENVIRONMENT_VARIABLE}")
+        raise EnvironmentError(f"Invalid host: {address}. Do not specify scheme in host - set that in "
+                               f"{CONSUL_SCHEME_ENVIRONMENT_VARIABLE}")
 
     host_port_split = address.split(":")
     host = host_port_split[0]
