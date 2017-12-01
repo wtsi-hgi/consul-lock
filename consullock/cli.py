@@ -217,7 +217,7 @@ def main(cli_arguments: List[str]):
 
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
-                        f"correctly (currently set to \"{consul_configuration.token}\")?"
+                        f"correctly?"
         logger.debug(e)
         logger.error(error_message)
         exit(PERMISSION_DENIED_EXIT_CODE)
