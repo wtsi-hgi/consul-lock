@@ -10,7 +10,8 @@ from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfigur
 from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError
 from consullock.managers import ConsulLockManager, KEY_DIRECTORY_SEPARATOR
 from consullock.models import ConsulLockInformation
-from consullock.tests._common import all_capture_builder, TEST_KEY, TEST_KEYS, TEST_KEYS_2, TEST_KEYS_REGEX
+from consullock.tests._common import all_capture_builder, TEST_KEY, TEST_KEYS, TEST_KEYS_2, TEST_KEYS_REGEX, \
+    TEST_METADATA
 from consullock.tests._test_locks import BaseLockTest, LockerCallable, acquire_locks, TestActionTimeoutError, \
     action_when_locked, DEFAULT_LOCK_ACQUIRE_TIMEOUT, double_action, MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, \
     DOUBLE_SLASH_KEY
@@ -42,10 +43,12 @@ class TestConsulLockManager(BaseLockTest):
         return action_executor
 
     def test_lock_when_unlocked(self):
+        locker = TestConsulLockManager._build_executor(Action.LOCK, action_kwargs=dict(metadata=TEST_METADATA))
         seconds_to_test = monotonic()
-        lock_result = acquire_locks(TestConsulLockManager._build_executor(Action.LOCK))[0]
+        lock_result = acquire_locks(locker)[0]
         self.assertIsInstance(lock_result.return_value, ConsulLockInformation)
         self.assertGreater(monotonic() - seconds_to_test, lock_result.return_value.seconds_to_lock)
+        self.assertEqual(TEST_METADATA, lock_result.return_value.metadata)
 
     def test_lock_when_locked_blocking(self):
         lock_result = action_when_locked(TestConsulLockManager._build_executor(Action.LOCK))
