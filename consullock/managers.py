@@ -26,6 +26,7 @@ from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLock
 from consullock.models import ConsulLockInformation
 
 KEY_DIRECTORY_SEPARATOR = "/"
+LOCK_EVENT_LISTENER = Callable[[str], None]
 
 logger = create_logger(__name__)
 
@@ -121,7 +122,9 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def acquire(self, key: str, blocking: bool=True, timeout: float=None, metadata: Any=None) \
+    def acquire(self, key: str, blocking: bool=True, timeout: float=None, metadata: Any=None,
+                on_before_lock: LOCK_EVENT_LISTENER=lambda key: None,
+                on_lock_already_locked: LOCK_EVENT_LISTENER=lambda key: None) \
             -> Optional[ConsulLockInformation]:
         """
         Acquires a Consul lock.
@@ -129,6 +132,8 @@ class ConsulLockManager:
         :param blocking: whether to block and wait for the lock
         :param timeout: timeout in seconds
         :param metadata: metadata to add to the lock information. Must be parsable by default JSON encode/decoder
+        :param on_before_lock: TODO
+        :param on_lock_already_locked: TODO
         :return: information about the lock if acquired, else `None` if not acquired and not blocking
         :raises InvalidKeyError: raised if the given key is not valid
         :raises LockAcquireTimeoutError: raised if times out waiting for the lock
@@ -147,15 +152,18 @@ class ConsulLockManager:
             while True:
                 logger.debug("Going to acquire lock")
                 seconds_to_lock = monotonic() - start_time
+                on_before_lock(key)
                 lock_information = self._acquire_lock(key, session_id, seconds_to_lock, metadata)
                 if lock_information is not None:
                     logger.debug("Acquired lock!")
                     return lock_information
-                elif not blocking:
-                    logger.debug("Could not acquire lock (already locked) and not blocking")
-                    return None
                 else:
-                    logger.debug("Could not acquire lock (already locked)")
+                    on_lock_already_locked(key)
+                    if not blocking:
+                        logger.debug("Could not acquire lock (already locked) and not blocking")
+                        return None
+                    else:
+                        logger.debug("Could not acquire lock (already locked)")
                 interval = self.lock_poll_interval_generator()
                 logger.debug(f"Sleeping for {interval}s")
                 sleep(interval)
