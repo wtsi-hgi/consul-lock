@@ -9,7 +9,7 @@ from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOU
     SESSION_TTL_CLI_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER, METADATA_CLI_lONG_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS, \
-    INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE
+    INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, VERSION
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, all_capture_builder, set_consul_env, TEST_KEYS, TEST_KEYS_2, \
@@ -103,6 +103,7 @@ class TestCli(BaseLockTest):
         self.assertIsInstance(captured_result.exception, SystemExit)
         self.assertEqual(SUCCESS_EXIT_CODE, captured_result.exception.code)
         self.assertIn(DESCRIPTION, captured_result.stdout)
+        self.assertIn(VERSION, captured_result.stdout)
 
     def test_run_without_consul_in_env(self):
         with self.assertRaises(SystemExit) as e:
