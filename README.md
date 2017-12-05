@@ -6,14 +6,18 @@ _CLI and Python interface for easily managing Consul locks_
 
 
 ## About
-- CLI:
+- CLI & Python interface:
     - Acquire and release a lock.
+    - Set TTL of the session that acquires a lock.
+    - Blocking and non-blocking locking.
+    - Lock acquire timeouts.
+    - Add extra metadata to lock information (useful for monitoring who is holding locks).
+- CLI:
     - Release multiple locks with keys that match regular expression.
     - Meaningful exit codes (see `configuration.py` for details).
     - JSON output on stdout.
     - Add extra verbosity on stderr with `-vv`.
 - Python interface:
-    - Acquire and release a lock.
     - Release multiple locks.
     - Find and release multiple locks with keys that match regular expression.
     - Type hinting.
@@ -79,6 +83,8 @@ optional arguments:
   --non-blocking        do not block if cannot lock straight away
   --timeout TIMEOUT     give up trying to acquire the key after this many
                         seconds (where 0 is never)
+  --metadata METADATA   additional metadata to add to the lock information
+                        (will be converted to JSON)
 ```
 
 #### Unlocking              
@@ -98,7 +104,7 @@ optional arguments:
 Block until acquires lock with key "my/lock", which will expire after 10 minutes:
 ```
 $ consul-lock lock --session-ttl=600 my/lock
-{"created": "2017-11-30T14:55:49.322108", "key": "my/lock", "session": "9b92744f-f1a9-db12-7873-ad44af5ae224"}
+{"created": "2017-11-30T14:55:49.322108", "key": "my/lock", "secondsToLock": 2.6241003070026636e-05, "session": "9b92744f-f1a9-db12-7873-ad44af5ae224"}
 $ echo $?
 0 
 ```
@@ -112,6 +118,12 @@ $ echo $?
 100
 ```
 (where `null` is the JSON output, written to stdout)
+
+Add metadata to lock:
+```
+$ consul-lock lock --metadata={"testing": 123} my/lock
+{"created": "2017-12-05T12:26:13.717995", "key": "my/lock", "metadata": {"testing": 123}, "secondsToLock": 4.327880731027108, "session": "6ad662de-6e0c-8e0f-d92c-5fface60c49b"}
+```
 
 Unlock lock:
 ```bash
