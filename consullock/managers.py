@@ -257,7 +257,9 @@ class ConsulLockManager:
         with self._teardown_lock:
             if not self._teardown_called:
                 self._teardown_called = True
-                logger.info(f"Destroying all sessions that have not acquired keys: {self._acquiring_session_ids}...")
+                if len(self._acquiring_session_ids) > 0:
+                    logger.info(
+                        f"Destroying all sessions that have not acquired keys: {self._acquiring_session_ids}...")
                 for session_id in self._acquiring_session_ids:
                     try:
                         self.consul_client.session.destroy(session_id=session_id)
