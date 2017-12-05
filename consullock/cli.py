@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import subprocess
 import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
@@ -20,7 +21,7 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
 from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, \
     InvalidEnvironmentVariableError, InvalidSessionTtlValueError, DoubleSlashKeyError, NonNormalisedKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
-from consullock.managers import ConsulLockManager
+from consullock.managers import ConsulLockManager, LOCK_EVENT_LISTENER
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
@@ -29,6 +30,8 @@ REGEX_KEY_ENABLED_SHORT_PARAMETER = "r"
 NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
 TIMEOUT_CLI_lONG_PARAMETER = "timeout"
 METADATA_CLI_lONG_PARAMETER = "metadata"
+ON_BEFORE_LOCK_LONG_PARAMETER = "on-before-lock"
+ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER = "on-already-locked"
 
 ACTION_CLI_PARAMETER_ACCESS = "action"
 
@@ -78,11 +81,13 @@ class CliLockConfiguration(CliConfiguration):
     TODO
     """
     def __init__(self, *args,non_blocking: bool=DEFAULT_NON_BLOCKING, timeout: float=DEFAULT_TIMEOUT,
-                 metadata: Any=None, **kwargs):
+                 metadata: Any=None, on_before_locked: str=None, on_lock_already_locked: str=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.non_blocking = non_blocking
         self.timeout = timeout
         self.metadata = metadata
+        self.on_before_locked = on_before_locked
+        self.on_lock_already_locked = on_lock_already_locked
 
 
 class _ParseJsonAction(argparse.Action):
@@ -124,6 +129,15 @@ def _create_parser() -> ArgumentParser:
     lock_subparser.add_argument(
         f"--{METADATA_CLI_lONG_PARAMETER}", default=None, type=str, action=_ParseJsonAction,
         help="additional metadata to add to the lock information (will be converted to JSON)")
+    lock_subparser.add_argument(
+        f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=None, type=str,
+        help="path to executable that is to be called before an attempt is made to acquire a lock, where the lock key "
+             "is passed as the first argument. Any failures of this executable are ignored")
+    lock_subparser.add_argument(
+        f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", default=None, type=str,
+        help="path to executable that is to be called after an attempt has been made to acquire a lock but failed due "
+             "to the lock already been taken, where the lock key is passed as the first argument. Any failures of this "
+             "executable are ignored")
 
     for subparser in [unlock_subparser, lock_subparser]:
         subparser.add_argument(
@@ -169,7 +183,9 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
                 NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
             timeout=_get_parameter_argument(
                 TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT),
-            metadata=_get_parameter_argument(METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=None))
+            metadata=_get_parameter_argument(METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=None),
+            on_before_locked=_get_parameter_argument(ON_BEFORE_LOCK_LONG_PARAMETER, parsed_arguments),
+            on_lock_already_locked=_get_parameter_argument(ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, parsed_arguments))
     else:
         return CliUnlockConfiguration(
             **shared_parameters,
@@ -213,10 +229,29 @@ def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
     :param configuration:
     :return:
     """
+    def generate_event_listener_caller(executable_path: str) -> LOCK_EVENT_LISTENER:
+        def event_listener_caller(key: str):
+            try:
+                process = subprocess.Popen([executable_path, key])
+                _, errors = process.communicate()
+                if errors is not None:
+                    logger.error(errors)
+                # Not falling over if event listener does!
+            except OSError as e:
+                logger.warning(e)
+
+        return event_listener_caller
+
+    event_listeners: LOCK_EVENT_LISTENER = {}
+    if configuration.on_before_locked is not None:
+        event_listeners["on_before_lock"] = generate_event_listener_caller(configuration.on_before_locked)
+    if configuration.on_lock_already_locked is not None:
+        event_listeners["on_lock_already_locked"] = generate_event_listener_caller(configuration.on_lock_already_locked)
+
     try:
         lock_information = lock_manager.acquire(
             key=configuration.key, blocking=not configuration.non_blocking,
-            timeout=configuration.timeout, metadata=configuration.metadata)
+            timeout=configuration.timeout, metadata=configuration.metadata, **event_listeners)
     except LockAcquireTimeoutError as e:
         logger.debug(e)
         logger.error(f"Timed out whilst waiting to acquire lock: {configuration.key}")

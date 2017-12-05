@@ -176,3 +176,17 @@ class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
         """
         Test unlocking locks with a name matching a regular expression.
         """
+
+    @abstractmethod
+    def test_lock_callbacks_when_not_locked(self):
+        """
+        TODO
+        :return:
+        """
+
+    @abstractmethod
+    def test_lock_callbacks_when_locked(self):
+        """
+        TODO
+        :return:
+        """

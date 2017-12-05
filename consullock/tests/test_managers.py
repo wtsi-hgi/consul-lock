@@ -167,7 +167,7 @@ class TestConsulLockManager(BaseLockTest):
         locker = TestConsulLockManager._build_executor(Action.LOCK, action_kwargs=dict(
             on_before_lock=on_before_lock_listener, on_lock_already_locked=on_lock_already_locked_listener))
         lock_result = acquire_locks(locker)[0]
-        self.assertIsNotNone(lock_result.return_value)
+        assert lock_result.return_value is not None
 
         on_before_lock_listener.assert_called_once_with(TEST_KEY)
         on_lock_already_locked_listener.assert_not_called()
@@ -180,7 +180,7 @@ class TestConsulLockManager(BaseLockTest):
             on_before_lock=on_before_lock_listener, on_lock_already_locked=on_lock_already_locked_listener,
             timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5))
         lock_result = action_when_locked(locker)
-        self.assertIsNone(lock_result.return_value)
+        assert lock_result.return_value is None
 
         on_before_lock_listener.assert_called_once_with(TEST_KEY)
         on_lock_already_locked_listener.assert_called_once_with(TEST_KEY)

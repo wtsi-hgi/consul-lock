@@ -1,15 +1,20 @@
 import json
+import os
+import shutil
 import unittest
-from typing import List, Any
+from os import chmod
+from tempfile import mkdtemp
+from typing import List, Any, Optional
 
 from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
 from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
-    SESSION_TTL_CLI_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER, METADATA_CLI_lONG_PARAMETER
+    SESSION_TTL_CLI_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER, METADATA_CLI_lONG_PARAMETER, \
+    ON_BEFORE_LOCK_LONG_PARAMETER, ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS, \
-    INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, VERSION
+    INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, all_capture_builder, set_consul_env, TEST_KEYS, TEST_KEYS_2, \
@@ -19,6 +24,8 @@ from consullock.tests._test_locks import BaseLockTest, DEFAULT_LOCK_ACQUIRE_TIME
 from consullock.tests.test_managers import acquire_locks, LockerCallable, action_when_locked, double_action, \
     TestActionTimeoutError
 
+_BASH_SHEBANG = "#!/usr/bin/env bash"
+
 
 class TestCli(BaseLockTest):
     """
@@ -27,14 +34,23 @@ class TestCli(BaseLockTest):
     @staticmethod
     def _build_executor(action: Action, main_args: List[Any]=None, action_args: List[Any]=None) \
             -> LockerCallable:
-        main_args = main_args or []
-        action_args = action_args or []
+        main_args = [str(arg) for arg in main_args] if main_args is not None else []
+        action_args = [str(arg) for arg in action_args] if action_args is not None else []
 
         def action_executor(key: str, service: ConsulDockerisedService) -> CaptureResult:
             set_consul_env(service)
             return all_capture_builder.build(main)(main_args + [action.value] + action_args + [key])
 
         return action_executor
+
+    def setUp(self):
+        super().setUp()
+        self.temp_directories: List[str] = []
+
+    def tearDown(self):
+        super().tearDown()
+        for file in self.temp_directories:
+            shutil.rmtree(file)
 
     def test_lock_when_unlocked(self):
         lock_result = acquire_locks(TestCli._build_executor(
@@ -56,7 +72,7 @@ class TestCli(BaseLockTest):
 
     def test_lock_when_locked_with_timeout(self):
         lock_result = action_when_locked(TestCli._build_executor(
-            Action.LOCK, action_args=[f"--{TIMEOUT_CLI_lONG_PARAMETER}", str(DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2)]))
+            Action.LOCK, action_args=[f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2]))
         self.assertEqual(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, lock_result.exception.code)
         print(lock_result.stdout)
         self.assertIsNone(json.loads(lock_result.stdout))
@@ -67,7 +83,7 @@ class TestCli(BaseLockTest):
 
         _, lock_result = double_action(
             TestCli._build_executor(
-                Action.LOCK, action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", str(MIN_LOCK_TIMEOUT_IN_SECONDS)]),
+                Action.LOCK, action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", MIN_LOCK_TIMEOUT_IN_SECONDS]),
             TestCli._build_executor(Action.LOCK),
             MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR,
             first_lock_callback
@@ -78,7 +94,7 @@ class TestCli(BaseLockTest):
 
     def test_lock_with_invalid_session_ttl(self):
         lock_result = acquire_locks(TestCli._build_executor(
-            Action.LOCK, action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", str(MIN_LOCK_TIMEOUT_IN_SECONDS - 1)]))[0]
+            Action.LOCK, action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", MIN_LOCK_TIMEOUT_IN_SECONDS - 1]))[0]
         self.assertEqual(INVALID_SESSION_TTL_EXIT_CODE, lock_result.exception.code)
 
     def test_lock_with_double_slash_path(self):
@@ -123,6 +139,78 @@ class TestCli(BaseLockTest):
             self.assertCountEqual(TEST_KEYS, json.loads(captured_result.stdout))
 
         acquire_locks(TestCli._build_executor(Action.LOCK), TEST_KEYS + TEST_KEYS_2, release)
+
+    def test_lock_callbacks_when_not_locked(self):
+        on_before_lock_listener = self._create_magic_mock_file()
+        on_lock_already_locked_listener = self._create_magic_mock_file()
+
+        locker = TestCli._build_executor(Action.LOCK, action_args=[
+            f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
+            f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", on_lock_already_locked_listener])
+        lock_result = acquire_locks(locker)[0]
+        assert lock_result.exception.code == SUCCESS_EXIT_CODE
+
+        self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_before_lock_listener))
+        self.assertIsNone(self._get_magic_mock_results(on_lock_already_locked_listener))
+
+    def test_lock_callbacks_when_locked(self):
+        on_before_lock_listener = self._create_magic_mock_file()
+        on_lock_already_locked_listener = self._create_magic_mock_file()
+
+        locker = TestCli._build_executor(Action.LOCK, action_args=[
+            f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
+            f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", on_lock_already_locked_listener,
+            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5])
+        lock_result = action_when_locked(locker)
+        assert lock_result.exception.code == LOCK_ACQUIRE_TIMEOUT_EXIT_CODE
+
+        self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_before_lock_listener))
+        self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_lock_already_locked_listener))
+
+    def test_lock_callback_when_callback_fails(self):
+        on_before_lock_listener = self._create_magic_mock_file()
+        with open(on_before_lock_listener, "w") as file:
+            file.write(f"{_BASH_SHEBANG}\nexit 1")
+
+        locker = TestCli._build_executor(Action.LOCK, action_args=[
+            f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener])
+        lock_result = acquire_locks(locker)[0]
+        assert lock_result.exception.code == SUCCESS_EXIT_CODE
+
+    def _create_magic_mock_file(self):
+        """
+        TODO
+        :return:
+        """
+        temp_directory = mkdtemp()
+        self.temp_directories.append(temp_directory)
+        file_location = os.path.join(temp_directory, "executable")
+        with open(file_location, "w") as file:
+            file.write(f"{_BASH_SHEBANG}\necho $@ >> {self._get_magic_mock_file_results_location(file_location)}")
+        chmod(file_location, 0o700)
+        return file_location
+
+    def _get_magic_mock_file_results_location(self, file_location: str) -> str:
+        """
+        TODO
+        :param file_location:
+        :return:
+        """
+        return f"{file_location}.results"
+
+    def _get_magic_mock_results(self, file_location: str) -> Optional[List[str]]:
+        """
+        TODO
+        :param file_location:
+        :return:
+        """
+        try:
+            with open(self._get_magic_mock_file_results_location(file_location), "r") as file:
+                return file.read().splitlines()
+        except FileNotFoundError:
+            return None
+
+
 
 
 del BaseLockTest
