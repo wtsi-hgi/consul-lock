@@ -1,12 +1,14 @@
 import unittest
 from time import monotonic
 from typing import Callable, List, Dict, Any
+from unittest.mock import MagicMock
 
 from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
 from consullock.cli import Action
-from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
+from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration, \
+    DEFAULT_LOCK_POLL_INTERVAL_GENERATOR
 from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError, \
     NonNormalisedKeyError
 from consullock.managers import ConsulLockManager, KEY_DIRECTORY_SEPARATOR
@@ -157,6 +159,31 @@ class TestConsulLockManager(BaseLockTest):
             self.assertCountEqual(TEST_KEYS, released_locks)
 
         acquire_locks(TestConsulLockManager._build_executor(Action.LOCK), TEST_KEYS + TEST_KEYS_2, release)
+
+    def test_lock_callbacks_when_not_locked(self):
+        on_before_lock_listener = MagicMock()
+        on_lock_already_locked_listener = MagicMock()
+
+        locker = TestConsulLockManager._build_executor(Action.LOCK, action_kwargs=dict(
+            on_before_lock=on_before_lock_listener, on_lock_already_locked=on_lock_already_locked_listener))
+        lock_result = acquire_locks(locker)[0]
+        self.assertIsNotNone(lock_result.return_value)
+
+        on_before_lock_listener.assert_called_once_with(TEST_KEY)
+        on_lock_already_locked_listener.assert_not_called()
+
+    def test_lock_callbacks_when_locked(self):
+        on_before_lock_listener = MagicMock()
+        on_lock_already_locked_listener = MagicMock()
+
+        locker = TestConsulLockManager._build_executor(Action.LOCK, action_kwargs=dict(
+            on_before_lock=on_before_lock_listener, on_lock_already_locked=on_lock_already_locked_listener,
+            timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5))
+        lock_result = action_when_locked(locker)
+        self.assertIsNone(lock_result.return_value)
+
+        on_before_lock_listener.assert_called_once_with(TEST_KEY)
+        on_lock_already_locked_listener.assert_called_once_with(TEST_KEY)
 
 
 del BaseLockTest
