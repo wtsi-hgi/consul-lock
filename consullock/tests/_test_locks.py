@@ -22,6 +22,7 @@ DEFAULT_LOCK_ACQUIRE_TIMEOUT = 0.5
 
 MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR = MIN_LOCK_TIMEOUT_IN_SECONDS * 5.0
 DOUBLE_SLASH_KEY = "my//key"
+NON_NORMALISED_KEY = "my/../test"
 
 
 def acquire_locks(locker: LockerCallable, keys: List[str]=None,
@@ -147,9 +148,15 @@ class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def test_lock_with_double_slash(self):
+    def test_lock_with_double_slash_path(self):
         """
         Tests that a lock with a double slash (//) cannot be set.
+        """
+
+    @abstractmethod
+    def test_lock_with_non_normalised_path(self):
+        """
+        Tests that a lock with a non-normalised path cannot be set.
         """
 
     @abstractmethod

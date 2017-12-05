@@ -15,7 +15,7 @@ from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, all_capture_builder, set_consul_env, TEST_KEYS, TEST_KEYS_2, \
     TEST_KEYS_REGEX, TEST_METADATA
 from consullock.tests._test_locks import BaseLockTest, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
-    MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, DOUBLE_SLASH_KEY
+    MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, DOUBLE_SLASH_KEY, NON_NORMALISED_KEY
 from consullock.tests.test_managers import acquire_locks, LockerCallable, action_when_locked, double_action, \
     TestActionTimeoutError
 
@@ -81,8 +81,12 @@ class TestCli(BaseLockTest):
             Action.LOCK, action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", str(MIN_LOCK_TIMEOUT_IN_SECONDS - 1)]))[0]
         self.assertEqual(INVALID_SESSION_TTL_EXIT_CODE, lock_result.exception.code)
 
-    def test_lock_with_double_slash(self):
+    def test_lock_with_double_slash_path(self):
         lock_result = acquire_locks(TestCli._build_executor(Action.LOCK), [DOUBLE_SLASH_KEY])[0]
+        self.assertEqual(INVALID_KEY_EXIT_CODE, lock_result.exception.code)
+
+    def test_lock_with_non_normalised_path(self):
+        lock_result = acquire_locks(TestCli._build_executor(Action.LOCK), [NON_NORMALISED_KEY])[0]
         self.assertEqual(INVALID_KEY_EXIT_CODE, lock_result.exception.code)
 
     def test_unlock_when_unlocked(self):

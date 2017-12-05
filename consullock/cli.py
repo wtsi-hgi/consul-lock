@@ -4,6 +4,7 @@ import logging
 import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
+from os.path import normpath
 from typing import NamedTuple, List, Any
 
 import demjson as demjson
@@ -16,8 +17,8 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, DEFAULT_REGEX_KEY_ENABLED, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, VERSION
-from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, DoubleSlashKeyError, \
-    InvalidEnvironmentVariableError, InvalidSessionTtlValueError
+from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, \
+    InvalidEnvironmentVariableError, InvalidSessionTtlValueError, DoubleSlashKeyError, NonNormalisedKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
 from consullock.managers import ConsulLockManager
 
@@ -250,6 +251,12 @@ def main(cli_arguments: List[str]):
         logger.debug(e)
         logger.error(f"Double slashes \"//\" in keys get converted into single slashes \"/\" - please use a "
                      f"single slash if this is intended: {cli_configuration.key}")
+        exit(INVALID_KEY_EXIT_CODE)
+
+    except NonNormalisedKeyError as e:
+        logger.debug(e)
+        logger.error(f"Key paths must be normalised - use \"{normpath(e.key)}\" if this key was intended: "
+                     f"{cli_configuration.key}")
         exit(INVALID_KEY_EXIT_CODE)
 
     exit(SUCCESS_EXIT_CODE)

@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime
 from json import JSONDecodeError
+from os.path import normpath
 from threading import Lock
 from time import sleep, monotonic
 from typing import Callable, Optional, Any, Set, List, Dict, Sequence
@@ -20,7 +21,7 @@ from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_L
     MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
 from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, UnusableStateError, \
     ConsulConnectionError, PermissionDeniedConsulError, SessionLostConsulError, DoubleSlashKeyError, \
-    InvalidSessionTtlValueError
+    InvalidSessionTtlValueError, NonNormalisedKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 
@@ -86,6 +87,8 @@ class ConsulLockManager:
         """
         if "//" in key:
             raise DoubleSlashKeyError(key)
+        elif normpath(key) != key:
+            raise NonNormalisedKeyError(key)
 
     def __init__(self, *, consul_configuration: ConsulConfiguration=None, session_ttl_in_seconds: float=None,
                  lock_poll_interval_generator: Callable[[], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR,

@@ -7,14 +7,15 @@ from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceCo
 
 from consullock.cli import Action
 from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
-from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError
+from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueError, UnusableStateError, \
+    NonNormalisedKeyError
 from consullock.managers import ConsulLockManager, KEY_DIRECTORY_SEPARATOR
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import all_capture_builder, TEST_KEY, TEST_KEYS, TEST_KEYS_2, TEST_KEYS_REGEX, \
     TEST_METADATA
 from consullock.tests._test_locks import BaseLockTest, LockerCallable, acquire_locks, TestActionTimeoutError, \
     action_when_locked, DEFAULT_LOCK_ACQUIRE_TIMEOUT, double_action, MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, \
-    DOUBLE_SLASH_KEY
+    DOUBLE_SLASH_KEY, NON_NORMALISED_KEY
 
 _DUMMY_CONSUL_CONFIGURATION = ConsulConfiguration("")
 _DEFAULT_INIT_ARGS_GENERATOR = lambda key, service: []
@@ -88,9 +89,13 @@ class TestConsulLockManager(BaseLockTest):
             InvalidSessionTtlValueError, ConsulLockManager, session_ttl_in_seconds=MIN_LOCK_TIMEOUT_IN_SECONDS - 1,
             consul_configuration=_DUMMY_CONSUL_CONFIGURATION)
 
-    def test_lock_with_double_slash(self):
+    def test_lock_with_double_slash_path(self):
         lock_manager = ConsulLockManager(consul_configuration=_DUMMY_CONSUL_CONFIGURATION)
         self.assertRaises(DoubleSlashKeyError, lock_manager.acquire, DOUBLE_SLASH_KEY)
+
+    def test_lock_with_non_normalised_path(self):
+        lock_manager = ConsulLockManager(consul_configuration=_DUMMY_CONSUL_CONFIGURATION)
+        self.assertRaises(NonNormalisedKeyError, lock_manager.acquire, NON_NORMALISED_KEY)
 
     def test_unlock_when_unlocked(self):
         with ConsulServiceController().start_service() as service:

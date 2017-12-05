@@ -34,16 +34,16 @@ class SessionLostConsulError(ConsulConnectionError):
     """
 
 
-class InvalidKeyError(ConsulLockBaseError):
+class NonNormalisedKeyError(ConsulLockBaseError):
     """
     Raised if a key name is invalid.
     """
     def __init__(self, key: str):
-        super().__init__(f"Invalid key name: {key}")
+        super().__init__(f"Invalid key: {key}")
         self.key = key
 
 
-class DoubleSlashKeyError(InvalidKeyError):
+class DoubleSlashKeyError(NonNormalisedKeyError):
     """
     Raised if a key uses double slash.
     """
