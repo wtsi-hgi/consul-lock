@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 PACKAGE_NAME = "consullock"
 VERSION = "1.1.0"
-DESCRIPTION = f"Tool to use locks in Consul (v{VERSION})"
+DESCRIPTION = f"Tool to use locks in Consul"
 EXECUTABLE_NAME = "consul-lock"
 
 DEFAULT_LOCK_POLL_INTERVAL_GENERATOR = lambda: 1.0

@@ -80,7 +80,7 @@ def _create_parser() -> ArgumentParser:
     Creates argument parser for the CLI.
     :return: the argument parser
     """
-    parser = ArgumentParser(description=DESCRIPTION)
+    parser = ArgumentParser(description="fDESCRIPTION (v{VERSION})")
     parser.add_argument(
         f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
         help="increase the level of log verbosity (add multiple increase further)")
