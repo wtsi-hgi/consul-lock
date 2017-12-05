@@ -1,9 +1,12 @@
+import argparse
 import json
 import logging
 import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
 from typing import NamedTuple, List, Any
+
+import demjson as demjson
 
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, \
@@ -24,6 +27,7 @@ VERBOSE_CLI_SHORT_PARAMETER = "v"
 REGEX_KEY_ENABLED_SHORT_PARAMETER = "r"
 NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
 TIMEOUT_CLI_lONG_PARAMETER = "timeout"
+METADATA_CLI_lONG_PARAMETER = "metadata"
 
 METHOD_CLI_PARAMETER_ACCESS = "method"
 
@@ -60,6 +64,15 @@ class CliConfiguration(NamedTuple):
     non_blocking: bool = DEFAULT_NON_BLOCKING
     timeout: float = DEFAULT_TIMEOUT
     regex_key_enabled: bool = DEFAULT_REGEX_KEY_ENABLED
+    metadata: Any = None
+
+
+class _ParseJsonAction(argparse.Action):
+    """
+    Action that parses JSON (in a non-strict way).
+    """
+    def __call__(self, parser, args, values, option_string=None):
+        setattr(args, self.dest, demjson.decode(values, strict=False))
 
 
 def _create_parser() -> ArgumentParser:
@@ -90,6 +103,9 @@ def _create_parser() -> ArgumentParser:
     lock_subparser.add_argument(
         f"--{TIMEOUT_CLI_lONG_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
         help="give up trying to acquire the key after this many seconds (where 0 is never)")
+    lock_subparser.add_argument(
+        f"--{METADATA_CLI_lONG_PARAMETER}", default=None, type=str, action=_ParseJsonAction,
+        help="additional metadata to add to the lock information (will be converted to JSON)")
 
     for subparser in [unlock_subparser, lock_subparser]:
         subparser.add_argument(
@@ -124,7 +140,8 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
             NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
         timeout=_get_parameter_argument(TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT),
         regex_key_enabled=_get_parameter_argument(
-            REGEX_KEY_ENABLED_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_REGEX_KEY_ENABLED))
+            REGEX_KEY_ENABLED_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_REGEX_KEY_ENABLED),
+        metadata=_get_parameter_argument(METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=None))
 
 
 def _get_verbosity(parsed_arguments: Namespace) -> int:
@@ -195,7 +212,7 @@ def main(cli_arguments: List[str]):
             try:
                 lock_information = lock_manager.acquire(
                     key=cli_configuration.key, blocking=not cli_configuration.non_blocking,
-                    timeout=cli_configuration.timeout)
+                    timeout=cli_configuration.timeout, metadata=cli_configuration.metadata)
             except LockAcquireTimeoutError as e:
                 logger.debug(e)
                 logger.error(f"Timed out whilst waiting to acquire lock: {cli_configuration.key}")

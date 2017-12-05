@@ -6,14 +6,14 @@ from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
 from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
-    SESSION_TTL_CLI_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER
+    SESSION_TTL_CLI_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER, METADATA_CLI_lONG_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS, \
     INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import TEST_KEY, all_capture_builder, set_consul_env, TEST_KEYS, TEST_KEYS_2, \
-    TEST_KEYS_REGEX
+    TEST_KEYS_REGEX, TEST_METADATA
 from consullock.tests._test_locks import BaseLockTest, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
     MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, DOUBLE_SLASH_KEY
 from consullock.tests.test_managers import acquire_locks, LockerCallable, action_when_locked, double_action, \
@@ -32,15 +32,17 @@ class TestCli(BaseLockTest):
 
         def action_executor(key: str, service: ConsulDockerisedService) -> CaptureResult:
             set_consul_env(service)
-            return all_capture_builder.build(main)(main_args + [action.value, key] + action_args)
+            return all_capture_builder.build(main)(main_args + [action.value] + action_args + [key])
 
         return action_executor
 
     def test_lock_when_unlocked(self):
-        lock_result = acquire_locks(TestCli._build_executor(Action.LOCK))[0]
+        lock_result = acquire_locks(TestCli._build_executor(
+            Action.LOCK, action_args=[f"--{METADATA_CLI_lONG_PARAMETER}", json.dumps(TEST_METADATA)]))[0]
         self.assertEqual(SUCCESS_EXIT_CODE, lock_result.exception.code)
-        self.assertIsInstance(
-            json.loads(lock_result.stdout, cls=ConsulLockInformationJSONDecoder), ConsulLockInformation)
+        parsed_stdout = json.loads(lock_result.stdout, cls=ConsulLockInformationJSONDecoder)
+        self.assertIsInstance(parsed_stdout, ConsulLockInformation)
+        self.assertEqual(TEST_METADATA, parsed_stdout.metadata)
 
     def test_lock_when_locked_blocking(self):
         lock_result = action_when_locked(TestCli._build_executor(Action.LOCK))

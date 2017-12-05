@@ -118,12 +118,14 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def acquire(self, key: str, blocking: bool=True, timeout: float=None) -> Optional[ConsulLockInformation]:
+    def acquire(self, key: str, blocking: bool=True, timeout: float=None, metadata: Any=None) \
+            -> Optional[ConsulLockInformation]:
         """
         Acquires a Consul lock.
         :param key: the lock key
         :param blocking: whether to block and wait for the lock
         :param timeout: timeout in seconds
+        :param metadata: metadata to add to the lock information. Must be parsable by default JSON encode/decoder
         :return: information about the lock if acquired, else `None` if not acquired and not blocking
         :raises InvalidKeyError: raised if the given key is not valid
         :raises LockAcquireTimeoutError: raised if times out waiting for the lock
@@ -141,7 +143,8 @@ class ConsulLockManager:
         def _acquire() -> Optional[ConsulLockInformation]:
             while True:
                 logger.debug("Going to acquire lock")
-                lock_information = self._acquire_lock(key, session_id, monotonic() - start_time)
+                seconds_to_lock = monotonic() - start_time
+                lock_information = self._acquire_lock(key, session_id, seconds_to_lock, metadata)
                 if lock_information is not None:
                     logger.debug("Acquired lock!")
                     return lock_information
@@ -269,16 +272,18 @@ class ConsulLockManager:
                         logger.warning(f"Could not connect to Consul to clean up session {session_id}")
                 atexit.unregister(self.teardown)
 
-    def _acquire_lock(self, key: str, session_id: str, seconds_to_lock: float) -> Optional[ConsulLockInformation]:
+    def _acquire_lock(self, key: str, session_id: str, seconds_to_lock: float, metadata: Any) \
+            -> Optional[ConsulLockInformation]:
         """
         Attempts to get the lock using the given session.
         :param key: name of the lock
         :param session_id: the identifier of the Consul session that should try to hold the lock
         :param seconds_to_lock: the number of seconds it took to acquire the lock
+        :param metadata: metadata to add to the lock information
         :return: details about the lock if acquired, else `None`
         :raises SessionLostConsulError: if the Consul session is lost
         """
-        lock_information = ConsulLockInformation(key, session_id, datetime.utcnow(), seconds_to_lock)
+        lock_information = ConsulLockInformation(key, session_id, datetime.utcnow(), seconds_to_lock, metadata)
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
         logger.debug(f"Attempting to acquire lock with value: {value}")
         try:
