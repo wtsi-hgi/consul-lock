@@ -5,7 +5,7 @@ import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
 from os.path import normpath
-from typing import NamedTuple, List, Any
+from typing import List, Any
 
 import demjson as demjson
 
@@ -30,7 +30,7 @@ NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
 TIMEOUT_CLI_lONG_PARAMETER = "timeout"
 METADATA_CLI_lONG_PARAMETER = "metadata"
 
-METHOD_CLI_PARAMETER_ACCESS = "method"
+ACTION_CLI_PARAMETER_ACCESS = "action"
 
 NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE = 0
 
@@ -54,18 +54,35 @@ class Action(Enum):
     UNLOCK = "unlock"
 
 
-class CliConfiguration(NamedTuple):
+class CliConfiguration:
     """
     Configuration set via the CLI.
     """
-    action: Action
-    key: str
-    session_ttl: float = DEFAULT_SESSION_TTL
-    log_verbosity: int = DEFAULT_LOG_VERBOSITY
-    non_blocking: bool = DEFAULT_NON_BLOCKING
-    timeout: float = DEFAULT_TIMEOUT
-    regex_key_enabled: bool = DEFAULT_REGEX_KEY_ENABLED
-    metadata: Any = None
+    def __init__(self, key: str, log_verbosity: int=DEFAULT_LOG_VERBOSITY, session_ttl: float=DEFAULT_SESSION_TTL):
+        self.key = key
+        self.log_verbosity = log_verbosity
+        self.session_ttl = session_ttl
+
+
+class CliUnlockConfiguration(CliConfiguration):
+    """
+    TODO
+    """
+    def __init__(self, *args, regex_key_enabled: bool=DEFAULT_REGEX_KEY_ENABLED, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.regex_key_enabled = regex_key_enabled
+
+
+class CliLockConfiguration(CliConfiguration):
+    """
+    TODO
+    """
+    def __init__(self, *args,non_blocking: bool=DEFAULT_NON_BLOCKING, timeout: float=DEFAULT_TIMEOUT,
+                 metadata: Any=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.non_blocking = non_blocking
+        self.timeout = timeout
+        self.metadata = metadata
 
 
 class _ParseJsonAction(argparse.Action):
@@ -85,7 +102,7 @@ def _create_parser() -> ArgumentParser:
     parser.add_argument(
         f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
         help="increase the level of log verbosity (add multiple increase further)")
-    subparsers = parser.add_subparsers(dest=METHOD_CLI_PARAMETER_ACCESS, help="action")
+    subparsers = parser.add_subparsers(dest=ACTION_CLI_PARAMETER_ACCESS, help="action")
 
     unlock_subparser = subparsers.add_parser(Action.UNLOCK.value, help="release a lock")
     unlock_subparser.add_argument(
@@ -131,25 +148,33 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
             raise e
         raise InvalidCliArgumentError() from e
 
-    if parsed_arguments.method is None:
+    action = parsed_arguments.action
+    if action is None:
         _argument_parser.print_help()
         exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
+    parsed_action = Action(_get_parameter_argument(ACTION_CLI_PARAMETER_ACCESS, parsed_arguments))
 
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
         session_ttl = None
-    return CliConfiguration(
-        action=Action(_get_parameter_argument(METHOD_CLI_PARAMETER_ACCESS, parsed_arguments)),
+
+    shared_parameters = dict(
         key=_get_parameter_argument(KEY_CLI_PARAMETER, parsed_arguments),
-        session_ttl=session_ttl,
-        log_verbosity=_get_verbosity(parsed_arguments),
-        # TODO: If config for release, these values are meaningless! Should be different subclass with no need "default"
-        non_blocking=_get_parameter_argument(
-            NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
-        timeout=_get_parameter_argument(TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT),
-        regex_key_enabled=_get_parameter_argument(
-            REGEX_KEY_ENABLED_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_REGEX_KEY_ENABLED),
-        metadata=_get_parameter_argument(METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=None))
+        log_verbosity=_get_verbosity(parsed_arguments), session_ttl=session_ttl)
+
+    if parsed_action == Action.LOCK:
+        return CliLockConfiguration(
+            **shared_parameters,
+            non_blocking=_get_parameter_argument(
+                NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
+            timeout=_get_parameter_argument(
+                TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT),
+            metadata=_get_parameter_argument(METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=None))
+    else:
+        return CliUnlockConfiguration(
+            **shared_parameters,
+            regex_key_enabled=_get_parameter_argument(
+                REGEX_KEY_ENABLED_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_REGEX_KEY_ENABLED))
 
 
 def _get_verbosity(parsed_arguments: Namespace) -> int:
@@ -179,6 +204,48 @@ def _get_parameter_argument(parameter: str, parsed_arguments: Namespace, default
     if value == _NO_DEFAULT_SENTINEL:
         raise KeyError(parameter)
     return value
+
+
+def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
+    """
+    TODO
+    :param lock_manager:
+    :param configuration:
+    :return:
+    """
+    try:
+        lock_information = lock_manager.acquire(
+            key=configuration.key, blocking=not configuration.non_blocking,
+            timeout=configuration.timeout, metadata=configuration.metadata)
+    except LockAcquireTimeoutError as e:
+        logger.debug(e)
+        logger.error(f"Timed out whilst waiting to acquire lock: {configuration.key}")
+        print(json.dumps(None))
+        exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
+
+    print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
+
+    if lock_information is None:
+        logger.error(f"Unable to acquire lock: {configuration.key}")
+        exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
+
+    exit(SUCCESS_EXIT_CODE)
+
+
+def _unlock(lock_manager: ConsulLockManager, configuration: CliUnlockConfiguration):
+    """
+    TODO
+    :param lock_manager:
+    :param configuration:
+    :return:
+    """
+    if configuration.regex_key_enabled:
+        release_information = sorted(list(lock_manager.release_regex(key_regex=configuration.key)))
+    else:
+        release_information = lock_manager.release(key=configuration.key)
+    print(json.dumps(release_information))
+
+    exit(SUCCESS_EXIT_CODE)
 
 
 def main(cli_arguments: List[str]):
@@ -216,50 +283,26 @@ def main(cli_arguments: List[str]):
         exit(INVALID_SESSION_TTL_EXIT_CODE)
 
     try:
-        if cli_configuration.action == Action.LOCK:
-            try:
-                lock_information = lock_manager.acquire(
-                    key=cli_configuration.key, blocking=not cli_configuration.non_blocking,
-                    timeout=cli_configuration.timeout, metadata=cli_configuration.metadata)
-            except LockAcquireTimeoutError as e:
-                logger.debug(e)
-                logger.error(f"Timed out whilst waiting to acquire lock: {cli_configuration.key}")
-                print(json.dumps(None))
-                exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
-
-            print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
-
-            if lock_information is None:
-                logger.error(f"Unable to acquire lock: {cli_configuration.key}")
-                exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
-
-        elif cli_configuration.action == Action.UNLOCK:
-            if cli_configuration.regex_key_enabled:
-                release_information = sorted(list(lock_manager.release_regex(key_regex=cli_configuration.key)))
-            else:
-                release_information = lock_manager.release(key=cli_configuration.key)
-            print(json.dumps(release_information))
-
+        if isinstance(cli_configuration, CliLockConfiguration):
+            _lock(lock_manager, cli_configuration)
+        else:
+            _unlock(lock_manager, cli_configuration)
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly?"
         logger.debug(e)
         logger.error(error_message)
         exit(PERMISSION_DENIED_EXIT_CODE)
-
     except DoubleSlashKeyError as e:
         logger.debug(e)
         logger.error(f"Double slashes \"//\" in keys get converted into single slashes \"/\" - please use a "
                      f"single slash if this is intended: {cli_configuration.key}")
         exit(INVALID_KEY_EXIT_CODE)
-
     except NonNormalisedKeyError as e:
         logger.debug(e)
         logger.error(f"Key paths must be normalised - use \"{normpath(e.key)}\" if this key was intended: "
                      f"{cli_configuration.key}")
         exit(INVALID_KEY_EXIT_CODE)
-
-    exit(SUCCESS_EXIT_CODE)
 
 
 def entrypoint():
