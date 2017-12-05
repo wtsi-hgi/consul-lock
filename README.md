@@ -147,7 +147,7 @@ lock_manager = ConsulLockManager(
     session_ttl_in_seconds=3600)
     
 # Get lock
-lock = lock_manager.acquire("my/lock", timeout=60, blocking=True)   # type: ConsulLockInformation
+lock = lock_manager.acquire("my/lock", timeout=60, blocking=True, metadata="testing")   # type: ConsulLockInformation
 
 # Find locks
 locks = lock_manager.find("my/.*")  # type: Dict[str, Optional[ConsulLockInformation]]

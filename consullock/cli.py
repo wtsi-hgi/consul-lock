@@ -114,6 +114,9 @@ def _create_parser() -> ArgumentParser:
     return parser
 
 
+_argument_parser = _create_parser()
+
+
 def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     """
     Parses the configuration passed in via command line arguments.
@@ -121,11 +124,15 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     :return: the configuration
     """
     try:
-        parsed_arguments = _create_parser().parse_args(arguments)
+        parsed_arguments = _argument_parser.parse_args(arguments)
     except SystemExit as e:
         if e.code == SUCCESS_EXIT_CODE:
             raise e
         raise InvalidCliArgumentError() from e
+
+    if parsed_arguments.method is None:
+        _argument_parser.print_help()
+        exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
 
     session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
