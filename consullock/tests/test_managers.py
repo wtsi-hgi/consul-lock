@@ -1,4 +1,5 @@
 import unittest
+from time import monotonic
 from typing import Callable, List, Dict, Any
 
 from capturewrap import CaptureResult
@@ -41,8 +42,10 @@ class TestConsulLockManager(BaseLockTest):
         return action_executor
 
     def test_lock_when_unlocked(self):
+        seconds_to_test = monotonic()
         lock_result = acquire_locks(TestConsulLockManager._build_executor(Action.LOCK))[0]
         self.assertIsInstance(lock_result.return_value, ConsulLockInformation)
+        self.assertGreater(monotonic() - seconds_to_test, lock_result.return_value.seconds_to_lock)
 
     def test_lock_when_locked_blocking(self):
         lock_result = action_when_locked(TestConsulLockManager._build_executor(Action.LOCK))
