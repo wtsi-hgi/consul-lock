@@ -12,6 +12,7 @@ _CLI and Python interface for easily managing Consul locks_
     - Blocking and non-blocking locking.
     - Lock acquire timeouts.
     - Add extra metadata to lock information (useful for monitoring who is holding locks).
+    - Specify lock event listeners to be fired before lock acquire is attempted and if unable to acquire locked lock.
 - CLI:
     - Release multiple locks with keys that match regular expression.
     - Meaningful exit codes (see `configuration.py` for details).
@@ -66,9 +67,11 @@ optional arguments:
 
 #### Locking
 ```
-usage: consul-lock lock [-h] [--session-ttl SESSION_TTL] [--non-blocking]
-                        [--timeout TIMEOUT]
-                        key
+usage: cli.py lock [-h] [--session-ttl SESSION_TTL] [--non-blocking]
+                   [--timeout TIMEOUT] [--metadata METADATA]
+                   [--on-before-lock ON_BEFORE_LOCK]
+                   [--on-already-locked ON_ALREADY_LOCKED]
+                   key
 
 positional arguments:
   key                   the lock identifier
@@ -85,6 +88,17 @@ optional arguments:
                         seconds (where 0 is never)
   --metadata METADATA   additional metadata to add to the lock information
                         (will be converted to JSON)
+  --on-before-lock ON_BEFORE_LOCK
+                        path to executable that is to be called before an
+                        attempt is made to acquire a lock, where the lock key
+                        is passed as the first argument. Any failures of this
+                        executable are ignored
+  --on-already-locked ON_ALREADY_LOCKED
+                        path to executable that is to be called after an
+                        attempt has been made to acquire a lock but failed due
+                        to the lock already been taken, where the lock key is
+                        passed as the first argument. Any failures of this
+                        executable are ignored
 ```
 
 #### Unlocking              
