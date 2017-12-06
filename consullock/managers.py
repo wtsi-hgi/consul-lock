@@ -222,7 +222,7 @@ class ConsulLockManager:
         :param key_regex: Python regular expression that captures the names of the locks that are to be released
         :return: the names of the locks that were released
         """
-        keys = list(self.find(key_regex).keys())
+        keys = list(self.find_regex(key_regex).keys())
         return self.release_all(keys)
 
     @_exception_converter
@@ -240,7 +240,7 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def find(self, name_regex: str) -> Dict[str, Optional[ConsulLockInformation]]:
+    def find_regex(self, name_regex: str) -> Dict[str, Optional[ConsulLockInformation]]:
         """
         Finds the keys with names that match the given regex.
         :param name_regex: key name regex

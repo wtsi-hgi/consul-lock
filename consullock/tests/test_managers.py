@@ -126,31 +126,31 @@ class TestConsulLockManager(BaseLockTest):
         lock_manager.teardown()
         self.assertRaises(UnusableStateError, lock_manager.acquire)
 
-    def test_find_when_no_locks(self):
+    def test_find_regex_when_no_locks(self):
         with ConsulServiceController().start_service() as service:
             lock_manager = ConsulLockManager(consul_client=service.create_consul_client())
-            found_locks = lock_manager.find(f"{TEST_KEY}{KEY_DIRECTORY_SEPARATOR}[0-9]+")
+            found_locks = lock_manager.find_regex(f"{TEST_KEY}{KEY_DIRECTORY_SEPARATOR}[0-9]+")
             self.assertEqual(0, len(found_locks))
 
-    def test_find_when_locks(self):
-        def find(service: ConsulDockerisedService):
+    def test_find_regex_when_locks(self):
+        def find_regex(service: ConsulDockerisedService):
             lock_manager = ConsulLockManager(consul_client=service.create_consul_client())
-            found_locks = lock_manager.find(TEST_KEYS_REGEX)
+            found_locks = lock_manager.find_regex(TEST_KEYS_REGEX)
             self.assertCountEqual(TEST_KEYS, [lock.key for lock in found_locks.values()])
 
-        acquire_locks(TestConsulLockManager._build_executor(Action.LOCK), TEST_KEYS + TEST_KEYS_2, find)
+        acquire_locks(TestConsulLockManager._build_executor(Action.LOCK), TEST_KEYS + TEST_KEYS_2, find_regex)
 
-    def test_find_when_locks_and_other_key(self):
-        def find(service: ConsulDockerisedService):
+    def test_find_regex_when_locks_and_other_key(self):
+        def find_regex(service: ConsulDockerisedService):
             consul_client = service.create_consul_client()
             lock_manager = ConsulLockManager(consul_client=consul_client)
             consul_client.kv.put(TEST_KEYS[1], "unrelated")
-            found_locks = lock_manager.find(TEST_KEYS_REGEX)
+            found_locks = lock_manager.find_regex(TEST_KEYS_REGEX)
             self.assertEqual(2, len(found_locks))
             self.assertIsInstance(found_locks[TEST_KEYS[0]], ConsulLockInformation)
             self.assertIsNone(found_locks[TEST_KEYS[1]])
 
-        acquire_locks(TestConsulLockManager._build_executor(Action.LOCK), [TEST_KEYS[0]], find)
+        acquire_locks(TestConsulLockManager._build_executor(Action.LOCK), [TEST_KEYS[0]], find_regex)
 
     def test_unlock_with_regex(self):
         def release(service: ConsulDockerisedService):
