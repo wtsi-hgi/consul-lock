@@ -1,4 +1,5 @@
 import argparse
+import errno
 import json
 import logging
 import subprocess
@@ -232,13 +233,19 @@ def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
     def generate_event_listener_caller(executable_path: str) -> LOCK_EVENT_LISTENER:
         def event_listener_caller(key: str):
             try:
-                process = subprocess.Popen([executable_path, key])
-                _, errors = process.communicate()
-                if errors is not None:
-                    logger.error(errors)
+                process = subprocess.Popen([executable_path, key], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                output, stderr = process.communicate()
+                if len(stderr) > 0:
+                    logger.info(f"stderr from executing \"{executable_path}\": {stderr.decode('utf-8').strip()}")
+                if process.returncode != 0:
+                    logger.error(f"Error when executing \"{executable_path}\": return code was {process.returncode}")
                 # Not falling over if event listener does!
             except OSError as e:
-                logger.warning(e)
+                common_error_string = f"Could not execute \"{executable_path}\":"
+                if e.errno == errno.ENOEXEC:
+                    logger.warning(f"{common_error_string} {e} (perhaps the executable needs a shebang?)")
+                else:
+                    logger.warning(f"{common_error_string} {e}")
 
         return event_listener_caller
 
