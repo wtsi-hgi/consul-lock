@@ -126,6 +126,19 @@ class TestConsulLockManager(BaseLockTest):
         lock_manager.teardown()
         self.assertRaises(UnusableStateError, lock_manager.acquire)
 
+    def test_find_when_no_locks(self):
+        with ConsulServiceController().start_service() as service:
+            lock_manager = ConsulLockManager(consul_client=service.create_consul_client())
+            self.assertIsNone(lock_manager.find(TEST_KEY))
+
+    def test_find_when_locks(self):
+        def find(service: ConsulDockerisedService):
+            lock_manager = ConsulLockManager(consul_client=service.create_consul_client())
+            found_lock = lock_manager.find(TEST_KEYS[0])
+            self.assertEqual(TEST_KEYS[0], found_lock.key)
+
+        acquire_locks(TestConsulLockManager._build_executor(Action.LOCK), TEST_KEYS + TEST_KEYS_2, find)
+
     def test_find_regex_when_no_locks(self):
         with ConsulServiceController().start_service() as service:
             lock_manager = ConsulLockManager(consul_client=service.create_consul_client())

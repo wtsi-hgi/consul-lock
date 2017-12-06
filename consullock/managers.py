@@ -240,9 +240,20 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
+    def find(self, name: str) -> Optional[ConsulLockInformation]:
+        """
+        Finds the lock with the key name that matches that given.
+        :param name: the lock key to match
+        :return: the found lock
+        """
+        lock = self.consul_client.kv.get(name)[1]
+        return json.loads(lock["Value"], cls=ConsulLockInformationJSONDecoder) if lock is not None else lock
+
+    @_exception_converter
+    @_raise_if_teardown_called
     def find_regex(self, name_regex: str) -> Dict[str, Optional[ConsulLockInformation]]:
         """
-        Finds the keys with names that match the given regex.
+        Finds the locks with key names that match the given regex.
         :param name_regex: key name regex
         :return: keys that match
         """

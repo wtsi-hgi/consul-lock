@@ -165,6 +165,9 @@ lock_manager = ConsulLockManager(
 # Get lock
 lock = lock_manager.acquire("my/lock", timeout=60, blocking=True, metadata="testing")   # type: ConsulLockInformation
 
+# Find lock associated to a given key
+lock = lock_manager.find("my/lock")
+
 # Find locks that match a regex
 locks = lock_manager.find_regex("my/.*")  # type: Dict[str, Optional[ConsulLockInformation]]
 
