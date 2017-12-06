@@ -159,6 +159,8 @@ from consullock.models import ConsulLockInformation
 lock_manager = ConsulLockManager(
     consul_configuration=get_consul_configuration_from_environment(),
     session_ttl_in_seconds=3600)
+# Note: if the Consul configuration is not specified explicitly, an attempt to gather it from environmental variables 
+# will be made (see: https://www.consul.io/docs/commands/index.html#environment-variables).
     
 # Get lock
 lock = lock_manager.acquire("my/lock", timeout=60, blocking=True, metadata="testing")   # type: ConsulLockInformation

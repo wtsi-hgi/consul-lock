@@ -18,7 +18,7 @@ from timeout_decorator import timeout_decorator
 from consullock._helpers import create_consul_client
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, MIN_LOCK_TIMEOUT_IN_SECONDS, \
-    MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration
+    MAX_LOCK_TIMEOUT_IN_SECONDS, ConsulConfiguration, get_consul_configuration_from_environment
 from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, UnusableStateError, \
     ConsulConnectionError, PermissionDeniedConsulError, SessionLostConsulError, DoubleSlashKeyError, \
     InvalidSessionTtlValueError, NonNormalisedKeyError
@@ -107,7 +107,14 @@ class ConsulLockManager:
         if consul_configuration is not None and consul_client is not None:
             raise ValueError("Must either define `consul_configuration` or `consul_client`, not both")
         if consul_configuration is None and consul_client is None:
-            raise ValueError("Either `consul_configuration` xor `consul_client` must be given")
+            try:
+                consul_configuration = get_consul_configuration_from_environment()
+                logger.info("Gather Consul configuration from the environment")
+                logger.debug(f"Consul configuration: {consul_configuration}")
+            except KeyError:
+                raise ValueError(
+                    "Either `consul_configuration` xor `consul_client` must be given or the configuration to connect "
+                    "to Consul must be in the environment")
 
         self.consul_client = consul_client or create_consul_client(consul_configuration)
         logger.debug(f"Consul configuration: {consul_configuration}")

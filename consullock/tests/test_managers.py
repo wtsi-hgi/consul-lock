@@ -14,7 +14,7 @@ from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueErr
 from consullock.managers import ConsulLockManager, KEY_DIRECTORY_SEPARATOR
 from consullock.models import ConsulLockInformation
 from consullock.tests._common import all_capture_builder, TEST_KEY, TEST_KEYS, TEST_KEYS_2, TEST_KEYS_REGEX, \
-    TEST_METADATA
+    TEST_METADATA, set_consul_env
 from consullock.tests._test_locks import BaseLockTest, LockerCallable, acquire_locks, TestActionTimeoutError, \
     action_when_locked, DEFAULT_LOCK_ACQUIRE_TIMEOUT, double_action, MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, \
     DOUBLE_SLASH_KEY, NON_NORMALISED_KEY
@@ -184,6 +184,12 @@ class TestConsulLockManager(BaseLockTest):
 
         on_before_lock_listener.assert_called_once_with(TEST_KEY)
         on_lock_already_locked_listener.assert_called_once_with(TEST_KEY)
+
+    def test_manager_can_get_configuration_from_environment(self):
+        with ConsulServiceController().start_service() as service:
+            set_consul_env(service)
+            lock_manager = ConsulLockManager()
+            self.assertIsNone(lock_manager.release(TEST_KEY))
 
 
 del BaseLockTest
