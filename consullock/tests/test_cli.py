@@ -12,7 +12,7 @@ from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceCo
 
 from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
     SESSION_TTL_CLI_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER, METADATA_CLI_lONG_PARAMETER, \
-    ON_BEFORE_LOCK_LONG_PARAMETER, ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER
+    ON_BEFORE_LOCK_LONG_PARAMETER, ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, LOCK_POLL_INTERVAL_SHORT_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS, \
     INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR
@@ -26,6 +26,7 @@ from consullock.tests.test_managers import acquire_locks, LockerCallable, action
     TestActionTimeoutError
 
 _BASH_SHEBANG = "#!/usr/bin/env bash"
+_END_OF_CLI_KEYWORD_OPTIONS = "--"
 
 
 class TestCli(BaseLockTest):
@@ -149,7 +150,8 @@ class TestCli(BaseLockTest):
             *itertools.chain(*[[f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", listener]
                                for listener in on_before_lock_listeners]),
             *itertools.chain(*[[f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", listener]
-                               for listener in on_lock_already_locked_listeners]), "--"]
+                               for listener in on_lock_already_locked_listeners]),
+            _END_OF_CLI_KEYWORD_OPTIONS]
         locker = TestCli._build_executor(Action.LOCK, action_args=action_args)
 
         lock_result = acquire_locks(locker)[0]
@@ -166,12 +168,26 @@ class TestCli(BaseLockTest):
         locker = TestCli._build_executor(Action.LOCK, action_args=[
             f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
             f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", on_lock_already_locked_listener,
-            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) * 0.5, "--"])
+            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) * 0.5,
+            _END_OF_CLI_KEYWORD_OPTIONS])
 
         lock_result = action_when_locked(locker)
         assert lock_result.exception.code == LOCK_ACQUIRE_TIMEOUT_EXIT_CODE
         self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_before_lock_listener))
         self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_lock_already_locked_listener))
+
+    def test_lock_with_lock_poll_interval(self):
+        on_before_lock_listener = self._create_magic_mock_file()
+
+        lock_result = action_when_locked(
+            TestCli._build_executor(Action.LOCK, action_args=[
+                f"-{LOCK_POLL_INTERVAL_SHORT_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) / 4,
+                f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
+                _END_OF_CLI_KEYWORD_OPTIONS]),
+            timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) / 1.5)
+        assert isinstance(lock_result.exception, TestActionTimeoutError)
+
+        self.assertGreaterEqual(len(self._get_magic_mock_results(on_before_lock_listener)), 2)
 
     def test_lock_callback_when_callback_fails(self):
         on_before_lock_listener = self._create_magic_mock_file()
@@ -179,7 +195,8 @@ class TestCli(BaseLockTest):
             file.write(f"{_BASH_SHEBANG}\nexit 1")
 
         locker = TestCli._build_executor(
-            Action.LOCK, action_args=[f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener, "--"])
+            Action.LOCK, action_args=[
+                f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener, _END_OF_CLI_KEYWORD_OPTIONS])
         lock_result = acquire_locks(locker)[0]
         assert lock_result.exception.code == SUCCESS_EXIT_CODE
 

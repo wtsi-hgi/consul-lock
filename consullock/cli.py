@@ -19,7 +19,7 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, DEFAULT_REGEX_KEY_ENABLED, \
-    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR
+    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, DEFAULT_METADATA
 from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, \
     InvalidEnvironmentVariableError, InvalidSessionTtlValueError, DoubleSlashKeyError, NonNormalisedKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
@@ -62,7 +62,7 @@ class Action(Enum):
 
 class CliConfiguration:
     """
-    Configuration set via the CLI.
+    Configuration, set via the CLI.
     """
     def __init__(self, key: str, log_verbosity: int=DEFAULT_LOG_VERBOSITY, session_ttl: float=DEFAULT_SESSION_TTL):
         self.key = key
@@ -72,7 +72,7 @@ class CliConfiguration:
 
 class CliUnlockConfiguration(CliConfiguration):
     """
-    TODO
+    Configuration for unlocking a lock, set via the CLI.
     """
     def __init__(self, *args, regex_key_enabled: bool=DEFAULT_REGEX_KEY_ENABLED, **kwargs):
         super().__init__(*args, **kwargs)
@@ -81,10 +81,10 @@ class CliUnlockConfiguration(CliConfiguration):
 
 class CliLockConfiguration(CliConfiguration):
     """
-    TODO
+    Configuration for locking a lock, set via the CLI.
     """
     def __init__(self, *args, non_blocking: bool=DEFAULT_NON_BLOCKING, timeout: float=DEFAULT_TIMEOUT,
-                 metadata: Any=None, on_before_locked_executables: List[str]=None,
+                 metadata: Any=DEFAULT_METADATA, on_before_locked_executables: List[str]=None,
                  on_lock_already_locked_executables: List[str]=None,
                  lock_poll_interval: float=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1), **kwargs):
         super().__init__(*args, **kwargs)
@@ -139,7 +139,7 @@ def _create_parser() -> ArgumentParser:
         f"--{TIMEOUT_CLI_lONG_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
         help="give up trying to acquire the key after this many seconds (where 0 is never)")
     lock_subparser.add_argument(
-        f"--{METADATA_CLI_lONG_PARAMETER}", default=None, type=str, action=_ParseJsonAction,
+        f"--{METADATA_CLI_lONG_PARAMETER}", default=DEFAULT_METADATA, type=str, action=_ParseJsonAction,
         help="additional metadata to add to the lock information (will be converted to JSON)")
     lock_subparser.add_argument(
         f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=None, type=str, nargs="+", action="append",
@@ -151,7 +151,7 @@ def _create_parser() -> ArgumentParser:
              "to the lock already been taken, where the lock key is passed as the first argument. Any failures of this "
              "executable are ignored")
     lock_subparser.add_argument(
-        f"-{LOCK_POLL_INTERVAL_SHORT_PARAMETER}", default=None, type=float,
+        f"-{LOCK_POLL_INTERVAL_SHORT_PARAMETER}", default=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1), type=float,
         help="number of seconds between polls to acquire a locked lock")
 
     for subparser in [unlock_subparser, lock_subparser]:
@@ -194,14 +194,18 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
     if parsed_action == Action.LOCK:
         return CliLockConfiguration(
             **shared_parameters,
-            non_blocking=_get_parameter_argument(NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments),
-            timeout=_get_parameter_argument(TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments),
-            metadata=_get_parameter_argument(METADATA_CLI_lONG_PARAMETER, parsed_arguments),
-            on_before_locked_executables=list(itertools.chain(
-                *_get_parameter_argument(ON_BEFORE_LOCK_LONG_PARAMETER, parsed_arguments) or [])),
-            on_lock_already_locked_executables=list(itertools.chain(
-                *_get_parameter_argument(ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, parsed_arguments) or [])),
-            lock_poll_interval=_get_parameter_argument(LOCK_POLL_INTERVAL_SHORT_PARAMETER, parsed_arguments))
+            non_blocking=_get_parameter_argument(
+                NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
+            timeout=_get_parameter_argument(
+                TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments, default=DEFAULT_TIMEOUT),
+            metadata=_get_parameter_argument(
+                METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=DEFAULT_METADATA),
+            on_before_locked_executables=list(itertools.chain(*_get_parameter_argument(
+                ON_BEFORE_LOCK_LONG_PARAMETER, parsed_arguments) or [])),
+            on_lock_already_locked_executables=list(itertools.chain(*_get_parameter_argument(
+                ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, parsed_arguments) or [])),
+            lock_poll_interval=_get_parameter_argument(
+                LOCK_POLL_INTERVAL_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1)))
     else:
         return CliUnlockConfiguration(
             **shared_parameters,

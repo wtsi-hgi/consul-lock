@@ -137,8 +137,9 @@ class ConsulLockManager:
         :param blocking: whether to block and wait for the lock
         :param timeout: timeout in seconds
         :param metadata: metadata to add to the lock information. Must be parsable by default JSON encode/decoder
-        :param on_before_lock: TODO
-        :param on_lock_already_locked: TODO
+        :param on_before_lock: event listener to be called before attempt to acquire lock
+        :param on_lock_already_locked: event listener to be called when an attempt to acquire a lock has failed as the
+        lock is already locked
         :param lock_poll_interval_generator: generator of the interval between Consul lock polls where the first
         argument is the attempt number (starting at 1)
         :return: information about the lock if acquired, else `None` if not acquired and not blocking
