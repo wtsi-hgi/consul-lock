@@ -96,7 +96,11 @@ class _ParseJsonAction(argparse.Action):
     Action that parses JSON (in a non-strict way).
     """
     def __call__(self, parser, args, values, option_string=None):
-        setattr(args, self.dest, demjson.decode(values, strict=False))
+        try:
+            value = demjson.decode(values, strict=False)
+        except demjson.JSONDecodeError as e:
+            raise InvalidCliArgumentError(f"Unable to parse value for \"{self.dest}\" as JSON: {values}") from e
+        setattr(args, self.dest, value)
 
 
 def _create_parser() -> ArgumentParser:
