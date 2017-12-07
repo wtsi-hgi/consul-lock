@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 
 PACKAGE_NAME = "consullock"
-VERSION = "3.0.0"
+VERSION = "4.0.0"
 DESCRIPTION = f"Tool to use locks in Consul"
 EXECUTABLE_NAME = "consul-lock"
 
