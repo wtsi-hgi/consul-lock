@@ -88,12 +88,12 @@ optional arguments:
                         seconds (where 0 is never)
   --metadata METADATA   additional metadata to add to the lock information
                         (will be converted to JSON)
-  --on-before-lock ON_BEFORE_LOCK
+  --on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]
                         path to executable that is to be called before an
                         attempt is made to acquire a lock, where the lock key
                         is passed as the first argument. Any failures of this
                         executable are ignored
-  --on-already-locked ON_ALREADY_LOCKED
+  --on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]
                         path to executable that is to be called after an
                         attempt has been made to acquire a lock but failed due
                         to the lock already been taken, where the lock key is
@@ -138,6 +138,15 @@ Add metadata to lock:
 $ consul-lock lock --metadata={"testing": 123} my/lock
 {"created": "2017-12-05T12:26:13.717995", "key": "my/lock", "metadata": {"testing": 123}, "secondsToLock": 4.327880731027108, "session": "6ad662de-6e0c-8e0f-d92c-5fface60c49b"}
 ```
+
+Acquire lock with event listeners:
+```
+$ consul-lock lock --on-before-lock=./my-before-script.sh --on-already-locked=./my-locked-script.sh my/lock
+{"created": "2017-12-07T13:02:06.773088", "key": "my/lock", "secondsToLock": 1.349498052150011e-05, "session": "459266be-2a85-464e-aa08-eda97613a29c"}
+```
+_Note: if specifying event listeners in the form `--x y`, you will need to explicitly declare the end of the command 
+options with a double dash, e.g. `consul-lock lock --on-before-lock ./my-before-script.sh -- my/lock`._
+
 
 Unlock lock:
 ```bash

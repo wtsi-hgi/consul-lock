@@ -6,6 +6,7 @@ from os import chmod
 from tempfile import mkdtemp
 from typing import List, Any, Optional
 
+import itertools
 from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
@@ -141,17 +142,22 @@ class TestCli(BaseLockTest):
         acquire_locks(TestCli._build_executor(Action.LOCK), TEST_KEYS + TEST_KEYS_2, release)
 
     def test_lock_callbacks_when_not_locked(self):
-        on_before_lock_listener = self._create_magic_mock_file()
-        on_lock_already_locked_listener = self._create_magic_mock_file()
+        on_before_lock_listeners = [self._create_magic_mock_file() for _ in range(3)]
+        on_lock_already_locked_listeners = [self._create_magic_mock_file() for _ in range(3)]
 
-        locker = TestCli._build_executor(Action.LOCK, action_args=[
-            f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
-            f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", on_lock_already_locked_listener])
+        action_args = [
+            *itertools.chain(*[[f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", listener]
+                               for listener in on_before_lock_listeners]),
+            *itertools.chain(*[[f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", listener]
+                               for listener in on_lock_already_locked_listeners]), "--"]
+        locker = TestCli._build_executor(Action.LOCK, action_args=action_args)
+
         lock_result = acquire_locks(locker)[0]
         assert lock_result.exception.code == SUCCESS_EXIT_CODE
-
-        self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_before_lock_listener))
-        self.assertIsNone(self._get_magic_mock_results(on_lock_already_locked_listener))
+        for listener in on_before_lock_listeners:
+            self.assertEqual([TEST_KEY], self._get_magic_mock_results(listener))
+        for listener in on_lock_already_locked_listeners:
+            self.assertIsNone(self._get_magic_mock_results(listener))
 
     def test_lock_callbacks_when_locked(self):
         on_before_lock_listener = self._create_magic_mock_file()
@@ -160,10 +166,10 @@ class TestCli(BaseLockTest):
         locker = TestCli._build_executor(Action.LOCK, action_args=[
             f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
             f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", on_lock_already_locked_listener,
-            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5])
+            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5, "--"])
+
         lock_result = action_when_locked(locker)
         assert lock_result.exception.code == LOCK_ACQUIRE_TIMEOUT_EXIT_CODE
-
         self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_before_lock_listener))
         self.assertEqual([TEST_KEY], self._get_magic_mock_results(on_lock_already_locked_listener))
 
@@ -172,8 +178,8 @@ class TestCli(BaseLockTest):
         with open(on_before_lock_listener, "w") as file:
             file.write(f"{_BASH_SHEBANG}\nexit 1")
 
-        locker = TestCli._build_executor(Action.LOCK, action_args=[
-            f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener])
+        locker = TestCli._build_executor(
+            Action.LOCK, action_args=[f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener, "--"])
         lock_result = acquire_locks(locker)[0]
         assert lock_result.exception.code == SUCCESS_EXIT_CODE
 
@@ -209,8 +215,6 @@ class TestCli(BaseLockTest):
                 return file.read().splitlines()
         except FileNotFoundError:
             return None
-
-
 
 
 del BaseLockTest

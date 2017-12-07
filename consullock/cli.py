@@ -10,6 +10,7 @@ from os.path import normpath
 from typing import List, Any
 
 import demjson as demjson
+import itertools
 
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, \
@@ -81,14 +82,17 @@ class CliLockConfiguration(CliConfiguration):
     """
     TODO
     """
-    def __init__(self, *args,non_blocking: bool=DEFAULT_NON_BLOCKING, timeout: float=DEFAULT_TIMEOUT,
-                 metadata: Any=None, on_before_locked: str=None, on_lock_already_locked: str=None, **kwargs):
+    def __init__(self, *args, non_blocking: bool=DEFAULT_NON_BLOCKING, timeout: float=DEFAULT_TIMEOUT,
+                 metadata: Any=None, on_before_locked_executables: List[str]=None,
+                 on_lock_already_locked_executables: List[str]=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.non_blocking = non_blocking
         self.timeout = timeout
         self.metadata = metadata
-        self.on_before_locked = on_before_locked
-        self.on_lock_already_locked = on_lock_already_locked
+        self.on_before_locked_executables = on_before_locked_executables \
+            if on_before_locked_executables is not None else []
+        self.on_lock_already_locked_executables = on_lock_already_locked_executables \
+            if on_lock_already_locked_executables is not None else []
 
 
 class _ParseJsonAction(argparse.Action):
@@ -135,11 +139,11 @@ def _create_parser() -> ArgumentParser:
         f"--{METADATA_CLI_lONG_PARAMETER}", default=None, type=str, action=_ParseJsonAction,
         help="additional metadata to add to the lock information (will be converted to JSON)")
     lock_subparser.add_argument(
-        f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=None, type=str,
+        f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=None, type=str, nargs="+", action="append",
         help="path to executable that is to be called before an attempt is made to acquire a lock, where the lock key "
              "is passed as the first argument. Any failures of this executable are ignored")
     lock_subparser.add_argument(
-        f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", default=None, type=str,
+        f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", default=None, type=str, nargs="+", action="append",
         help="path to executable that is to be called after an attempt has been made to acquire a lock but failed due "
              "to the lock already been taken, where the lock key is passed as the first argument. Any failures of this "
              "executable are ignored")
@@ -189,8 +193,10 @@ def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
             timeout=_get_parameter_argument(
                 TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments or None, default=DEFAULT_TIMEOUT),
             metadata=_get_parameter_argument(METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=None),
-            on_before_locked=_get_parameter_argument(ON_BEFORE_LOCK_LONG_PARAMETER, parsed_arguments),
-            on_lock_already_locked=_get_parameter_argument(ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, parsed_arguments))
+            on_before_locked_executables=list(itertools.chain(
+                *_get_parameter_argument(ON_BEFORE_LOCK_LONG_PARAMETER, parsed_arguments) or [])),
+            on_lock_already_locked_executables=list(itertools.chain(
+                *_get_parameter_argument(ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, parsed_arguments) or [])))
     else:
         return CliUnlockConfiguration(
             **shared_parameters,
@@ -234,30 +240,33 @@ def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
     :param configuration:
     :return:
     """
-    def generate_event_listener_caller(executable_path: str) -> LOCK_EVENT_LISTENER:
+    def generate_event_listener_caller(executables: List[str]) -> LOCK_EVENT_LISTENER:
         def event_listener_caller(key: str):
-            try:
-                process = subprocess.Popen([executable_path, key], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                output, stderr = process.communicate()
-                if len(stderr) > 0:
-                    logger.info(f"stderr from executing \"{executable_path}\": {stderr.decode('utf-8').strip()}")
-                if process.returncode != 0:
-                    logger.error(f"Error when executing \"{executable_path}\": return code was {process.returncode}")
-                # Not falling over if event listener does!
-            except OSError as e:
-                common_error_string = f"Could not execute \"{executable_path}\":"
-                if e.errno == errno.ENOEXEC:
-                    logger.warning(f"{common_error_string} {e} (perhaps the executable needs a shebang?)")
-                else:
-                    logger.warning(f"{common_error_string} {e}")
+            for executable in executables:
+                try:
+                    process = subprocess.Popen([executable, key], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                    output, stderr = process.communicate()
+                    if len(stderr) > 0:
+                        logger.info(f"stderr from executing \"{executable}\": {stderr.decode('utf-8').strip()}")
+                    if process.returncode != 0:
+                        logger.error(f"Error when executing \"{executable}\": return code was {process.returncode}")
+                    # Not falling over if event listener does!
+                except OSError as e:
+                    common_error_string = f"Could not execute \"{executable}\":"
+                    if e.errno == errno.ENOEXEC:
+                        logger.warning(f"{common_error_string} {e} (perhaps the executable needs a shebang?)")
+                    else:
+                        logger.warning(f"{common_error_string} {e}")
 
         return event_listener_caller
 
     event_listeners: LOCK_EVENT_LISTENER = {}
-    if configuration.on_before_locked is not None:
-        event_listeners["on_before_lock"] = generate_event_listener_caller(configuration.on_before_locked)
-    if configuration.on_lock_already_locked is not None:
-        event_listeners["on_lock_already_locked"] = generate_event_listener_caller(configuration.on_lock_already_locked)
+    if configuration.on_before_locked_executables is not None:
+        event_listeners["on_before_lock"] = generate_event_listener_caller(
+            configuration.on_before_locked_executables)
+    if configuration.on_lock_already_locked_executables is not None:
+        event_listeners["on_lock_already_locked"] = generate_event_listener_caller(
+            configuration.on_lock_already_locked_executables)
 
     try:
         lock_information = lock_manager.acquire(
