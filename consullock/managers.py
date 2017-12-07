@@ -92,13 +92,11 @@ class ConsulLockManager:
             raise NonNormalisedKeyError(key)
 
     def __init__(self, *, consul_configuration: ConsulConfiguration=None, session_ttl_in_seconds: float=None,
-                 lock_poll_interval_generator: Callable[[], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR,
                  consul_client: Consul=None):
         """
         Constructor.
         :param consul_configuration: configuration used to connect to Consul (required if `consul_client` is not given)
         :param session_ttl_in_seconds: the TTL of Consul sessions
-        :param lock_poll_interval_generator: generator of the interval between Consul lock polls
         :param consul_client: client used to connect to Consul (required if `consul_configuration` is not given)
         :raises InvalidSessionTtlValueError: if the `session_ttl_in_seconds` is not valid
         """
@@ -119,7 +117,6 @@ class ConsulLockManager:
         self.consul_client = consul_client or create_consul_client(consul_configuration)
         logger.debug(f"Consul configuration: {consul_configuration}")
         self.session_ttl_in_seconds = session_ttl_in_seconds
-        self.lock_poll_interval_generator = lock_poll_interval_generator
         self._acquiring_session_ids: Set[Session] = set()
 
         # Try to stop any zombie sessions if premature exit
@@ -131,7 +128,8 @@ class ConsulLockManager:
     @_raise_if_teardown_called
     def acquire(self, key: str, blocking: bool=True, timeout: float=None, metadata: Any=None,
                 on_before_lock: LOCK_EVENT_LISTENER=lambda key: None,
-                on_lock_already_locked: LOCK_EVENT_LISTENER=lambda key: None) \
+                on_lock_already_locked: LOCK_EVENT_LISTENER=lambda key: None,
+                lock_poll_interval_generator: Callable[[int], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR) \
             -> Optional[ConsulLockInformation]:
         """
         Acquires a Consul lock.
@@ -141,6 +139,8 @@ class ConsulLockManager:
         :param metadata: metadata to add to the lock information. Must be parsable by default JSON encode/decoder
         :param on_before_lock: TODO
         :param on_lock_already_locked: TODO
+        :param lock_poll_interval_generator: generator of the interval between Consul lock polls where the first
+        argument is the attempt number (starting at 1)
         :return: information about the lock if acquired, else `None` if not acquired and not blocking
         :raises InvalidKeyError: raised if the given key is not valid
         :raises LockAcquireTimeoutError: raised if times out waiting for the lock
@@ -156,6 +156,7 @@ class ConsulLockManager:
 
         @timeout_decorator.timeout(timeout, timeout_exception=LockAcquireTimeoutError)
         def _acquire() -> Optional[ConsulLockInformation]:
+            i = 1
             while True:
                 logger.debug("Going to acquire lock")
                 seconds_to_lock = monotonic() - start_time
@@ -171,9 +172,10 @@ class ConsulLockManager:
                         return None
                     else:
                         logger.debug("Could not acquire lock (already locked)")
-                interval = self.lock_poll_interval_generator()
+                interval = lock_poll_interval_generator(i)
                 logger.debug(f"Sleeping for {interval}s")
                 sleep(interval)
+                i += 1
 
         lock_information = _acquire()
         self._acquiring_session_ids.remove(session_id)

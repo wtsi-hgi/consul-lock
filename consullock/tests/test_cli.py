@@ -166,7 +166,7 @@ class TestCli(BaseLockTest):
         locker = TestCli._build_executor(Action.LOCK, action_args=[
             f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
             f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", on_lock_already_locked_listener,
-            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5, "--"])
+            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) * 0.5, "--"])
 
         lock_result = action_when_locked(locker)
         assert lock_result.exception.code == LOCK_ACQUIRE_TIMEOUT_EXIT_CODE

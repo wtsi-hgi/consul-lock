@@ -191,7 +191,7 @@ class TestConsulLockManager(BaseLockTest):
 
         locker = TestConsulLockManager._build_executor(Action.LOCK, action_kwargs=dict(
             on_before_lock=on_before_lock_listener, on_lock_already_locked=on_lock_already_locked_listener,
-            timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5))
+            timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) * 0.5))
         lock_result = action_when_locked(locker)
         assert lock_result.return_value is None
 
