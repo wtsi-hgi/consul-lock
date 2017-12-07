@@ -1,7 +1,7 @@
 import unittest
 from time import monotonic
 from typing import Callable, List, Dict, Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from capturewrap import CaptureResult
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
@@ -191,12 +191,23 @@ class TestConsulLockManager(BaseLockTest):
 
         locker = TestConsulLockManager._build_executor(Action.LOCK, action_kwargs=dict(
             on_before_lock=on_before_lock_listener, on_lock_already_locked=on_lock_already_locked_listener,
-            timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR() * 0.5))
+            timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) * 0.5))
         lock_result = action_when_locked(locker)
         assert lock_result.return_value is None
 
         on_before_lock_listener.assert_called_once_with(TEST_KEY)
         on_lock_already_locked_listener.assert_called_once_with(TEST_KEY)
+
+    def test_lock_with_lock_poll_interval(self):
+        lock_poll_interval_generator = MagicMock(return_value=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) / 4)
+
+        lock_result = action_when_locked(
+            TestConsulLockManager._build_executor(Action.LOCK, action_kwargs=dict(
+                lock_poll_interval_generator=lock_poll_interval_generator)),
+            timeout=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) / 1.5)
+        assert isinstance(lock_result.exception, TestActionTimeoutError)
+
+        lock_poll_interval_generator.assert_has_calls([call(1), call(2)])
 
     def test_manager_can_get_configuration_from_environment(self):
         with ConsulServiceController().start_service() as service:

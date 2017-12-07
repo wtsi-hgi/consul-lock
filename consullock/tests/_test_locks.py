@@ -180,13 +180,17 @@ class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
     @abstractmethod
     def test_lock_callbacks_when_not_locked(self):
         """
-        TODO
-        :return:
+        Tests lock callbacks when not locked.
         """
 
     @abstractmethod
     def test_lock_callbacks_when_locked(self):
         """
-        TODO
-        :return:
+        Tests lock callbacks when locked.
+        """
+
+    @abstractmethod
+    def test_lock_with_lock_poll_interval(self):
+        """
+        Test locking with custom lock poll interval.
         """
