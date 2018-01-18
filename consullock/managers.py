@@ -23,7 +23,7 @@ from consullock.exceptions import ConsulLockBaseError, LockAcquireTimeoutError, 
     ConsulConnectionError, PermissionDeniedConsulError, SessionLostConsulError, DoubleSlashKeyError, \
     InvalidSessionTtlValueError, NonNormalisedKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLockInformationJSONDecoder
-from consullock.models import ConsulLockInformation
+from consullock.models import ConsulLockInformation, ConnectedConsulLockInformation
 
 KEY_DIRECTORY_SEPARATOR = "/"
 LOCK_EVENT_LISTENER = Callable[[str], None]
@@ -130,7 +130,7 @@ class ConsulLockManager:
                 on_before_lock: LOCK_EVENT_LISTENER=lambda key: None,
                 on_lock_already_locked: LOCK_EVENT_LISTENER=lambda key: None,
                 lock_poll_interval_generator: Callable[[int], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR) \
-            -> Optional[ConsulLockInformation]:
+            -> Optional[ConnectedConsulLockInformation]:
         """
         Acquires a Consul lock.
         :param key: the lock key
@@ -243,18 +243,25 @@ class ConsulLockManager:
 
     @_exception_converter
     @_raise_if_teardown_called
-    def find(self, name: str) -> Optional[ConsulLockInformation]:
+    def find(self, name: str) -> Optional[ConnectedConsulLockInformation]:
         """
         Finds the lock with the key name that matches that given.
         :param name: the lock key to match
         :return: the found lock
         """
         lock = self.consul_client.kv.get(name)[1]
-        return json.loads(lock["Value"], cls=ConsulLockInformationJSONDecoder) if lock is not None else lock
+        if lock is None:
+            return None
+
+        lock_information = json.loads(lock["Value"], cls=ConsulLockInformationJSONDecoder)
+        return ConnectedConsulLockInformation(
+            self, lock_information.key, lock_information.session_id, lock_information.created,
+            lock_information.seconds_to_lock, lock_information.metadata)
+
 
     @_exception_converter
     @_raise_if_teardown_called
-    def find_regex(self, name_regex: str) -> Dict[str, Optional[ConsulLockInformation]]:
+    def find_regex(self, name_regex: str) -> Dict[str, Optional[ConnectedConsulLockInformation]]:
         """
         Finds the locks with key names that match the given regex.
         :param name_regex: key name regex
@@ -305,7 +312,7 @@ class ConsulLockManager:
                 atexit.unregister(self.teardown)
 
     def _acquire_lock(self, key: str, session_id: str, seconds_to_lock: float, metadata: Any) \
-            -> Optional[ConsulLockInformation]:
+            -> Optional[ConnectedConsulLockInformation]:
         """
         Attempts to get the lock using the given session.
         :param key: name of the lock
@@ -315,7 +322,8 @@ class ConsulLockManager:
         :return: details about the lock if acquired, else `None`
         :raises SessionLostConsulError: if the Consul session is lost
         """
-        lock_information = ConsulLockInformation(key, session_id, datetime.utcnow(), seconds_to_lock, metadata)
+        lock_information = ConnectedConsulLockInformation(
+            self, key, session_id, datetime.utcnow(), seconds_to_lock, metadata)
         value = json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, indent=4, sort_keys=True)
         logger.debug(f"Attempting to acquire lock with value: {value}")
         try:

@@ -23,3 +23,19 @@ class ConsulLockInformation:
 
     def __ne__(self, other: Any) -> bool:
         return not self.__eq__(other)
+
+
+class ConnectedConsulLockInformation(ConsulLockInformation):
+    """
+    Information about a Consul lock, connected to a lock manager.
+    """
+    def __init__(self, lock_manager, key: str, session_id: str, created: datetime,
+                 seconds_to_lock: float, metadata: Any=None):
+        super().__init__(key, session_id, created, seconds_to_lock, metadata)
+        self._lock_manager = lock_manager
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._lock_manager.release(self.key)

@@ -209,11 +209,19 @@ class TestConsulLockManager(BaseLockTest):
 
         lock_poll_interval_generator.assert_has_calls([call(1), call(2)])
 
-    def test_manager_can_get_configuration_from_environment(self):
+    def test_can_get_configuration_from_environment(self):
         with ConsulServiceController().start_service() as service:
             set_consul_env(service)
             lock_manager = ConsulLockManager()
             self.assertIsNone(lock_manager.release(TEST_KEY))
+
+    def test_with_context(self):
+        with ConsulServiceController().start_service() as service:
+            consul_client = service.create_consul_client()
+            lock_manager = ConsulLockManager(consul_client=consul_client)
+            with lock_manager.acquire(TEST_KEY) as lock_information:
+                self.assertEqual(lock_information, lock_manager.find(TEST_KEY))
+            self.assertIsNone(lock_manager.find(TEST_KEY))
 
 
 del BaseLockTest
