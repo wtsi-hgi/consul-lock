@@ -170,9 +170,13 @@ lock_manager = ConsulLockManager(
     session_ttl_in_seconds=3600)
 # Note: if the Consul configuration is not specified explicitly, an attempt to gather it from environmental variables 
 # will be made (see: https://www.consul.io/docs/commands/index.html#environment-variables).
-    
+
+# Use lock in context
+with lock_manager.acquire("my/lock") as lock:
+    do_things_holding_lock()
+
 # Get lock
-lock = lock_manager.acquire("my/lock", timeout=60, blocking=True, metadata="testing")   # type: ConsulLockInformation
+lock = lock_manager.acquire("my/lock", timeout=60, blocking=True, metadata="testing")
 
 # Find lock associated to a given key
 lock = lock_manager.find("my/lock")
