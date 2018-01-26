@@ -10,8 +10,8 @@ from typing import List, Any, Optional
 from capturewrap import CaptureResult, CaptureWrapBuilder
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
-from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
-    SESSION_TTL_CLI_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER, METADATA_CLI_lONG_PARAMETER, \
+from consullock.cli import main, Action, NON_BLOCKING_LONG_PARAMETER, TIMEOUT_LONG_PARAMETER, \
+    SESSION_TTL_LONG_PARAMETER, REGEX_KEY_ENABLED_SHORT_PARAMETER, METADATA_LONG_PARAMETER, \
     ON_BEFORE_LOCK_LONG_PARAMETER, ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, LOCK_POLL_INTERVAL_SHORT_PARAMETER
 from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, DESCRIPTION, MIN_LOCK_TIMEOUT_IN_SECONDS, \
@@ -57,7 +57,7 @@ class TestCli(BaseLockTest):
 
     def test_lock_when_unlocked(self):
         lock_result = acquire_locks(TestCli._build_executor(
-            Action.LOCK, action_args=[f"--{METADATA_CLI_lONG_PARAMETER}", json.dumps(TEST_METADATA)]))[0]
+            Action.LOCK, action_args=[f"--{METADATA_LONG_PARAMETER}", json.dumps(TEST_METADATA)]))[0]
         self.assertEqual(SUCCESS_EXIT_CODE, lock_result.exception.code)
         parsed_stdout = json.loads(lock_result.stdout, cls=ConsulLockInformationJSONDecoder)
         self.assertIsInstance(parsed_stdout, ConsulLockInformation)
@@ -69,13 +69,13 @@ class TestCli(BaseLockTest):
 
     def test_lock_when_locked_non_blocking(self):
         lock_result = action_when_locked(TestCli._build_executor(
-            Action.LOCK, action_args=[f"--{NON_BLOCKING_CLI_LONG_PARAMETER}"]))
+            Action.LOCK, action_args=[f"--{NON_BLOCKING_LONG_PARAMETER}"]))
         self.assertEqual(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, lock_result.exception.code)
         self.assertIsNone(json.loads(lock_result.stdout))
 
     def test_lock_when_locked_with_timeout(self):
         lock_result = action_when_locked(TestCli._build_executor(
-            Action.LOCK, action_args=[f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2]))
+            Action.LOCK, action_args=[f"--{TIMEOUT_LONG_PARAMETER}", DEFAULT_LOCK_ACQUIRE_TIMEOUT / 2]))
         self.assertEqual(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE, lock_result.exception.code)
         print(lock_result.stdout)
         self.assertIsNone(json.loads(lock_result.stdout))
@@ -86,7 +86,7 @@ class TestCli(BaseLockTest):
 
         _, lock_result = double_action(
             TestCli._build_executor(
-                Action.LOCK, action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", MIN_LOCK_TIMEOUT_IN_SECONDS]),
+                Action.LOCK, action_args=[f"--{SESSION_TTL_LONG_PARAMETER}", MIN_LOCK_TIMEOUT_IN_SECONDS]),
             TestCli._build_executor(Action.LOCK),
             MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR,
             first_lock_callback
@@ -97,7 +97,7 @@ class TestCli(BaseLockTest):
 
     def test_lock_with_invalid_session_ttl(self):
         lock_result = acquire_locks(TestCli._build_executor(
-            Action.LOCK, action_args=[f"--{SESSION_TTL_CLI_LONG_PARAMETER}", MIN_LOCK_TIMEOUT_IN_SECONDS - 1]))[0]
+            Action.LOCK, action_args=[f"--{SESSION_TTL_LONG_PARAMETER}", MIN_LOCK_TIMEOUT_IN_SECONDS - 1]))[0]
         self.assertEqual(INVALID_SESSION_TTL_EXIT_CODE, lock_result.exception.code)
 
     def test_lock_with_double_slash_path(self):
@@ -169,7 +169,7 @@ class TestCli(BaseLockTest):
         locker = TestCli._build_executor(Action.LOCK, action_args=[
             f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", on_before_lock_listener,
             f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", on_lock_already_locked_listener,
-            f"--{TIMEOUT_CLI_lONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) * 0.5,
+            f"--{TIMEOUT_LONG_PARAMETER}", DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1) * 0.5,
             _END_OF_CLI_KEYWORD_OPTIONS])
 
         lock_result = action_when_locked(locker)
