@@ -1,5 +1,6 @@
 import argparse
 import errno
+import itertools
 import json
 import logging
 import subprocess
@@ -7,10 +8,9 @@ import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
 from os.path import normpath
-from typing import List, Any
+from typing import List, Any, Optional
 
 import demjson as demjson
-import itertools
 
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, \
@@ -19,11 +19,13 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     MIN_LOCK_TIMEOUT_IN_SECONDS, MAX_LOCK_TIMEOUT_IN_SECONDS, CONSUL_TOKEN_ENVIRONMENT_VARIABLE, \
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, DEFAULT_REGEX_KEY_ENABLED, \
-    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, DEFAULT_METADATA
+    UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, DEFAULT_METADATA, \
+    ConsulConfiguration
 from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, \
     InvalidEnvironmentVariableError, InvalidSessionTtlValueError, DoubleSlashKeyError, NonNormalisedKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
-from consullock.managers import ConsulLockManager, LOCK_EVENT_LISTENER
+from consullock.managers import ConsulLockManager, LockEventListener
+from consullock.models import ConnectedConsulLockInformation
 
 KEY_CLI_PARAMETER = "key"
 SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
@@ -164,7 +166,7 @@ def _create_parser() -> ArgumentParser:
 _argument_parser = _create_parser()
 
 
-def parse_cli_configration(arguments: List[str]) -> CliConfiguration:
+def parse_cli_configuration(arguments: List[str]) -> CliConfiguration:
     """
     Parses the configuration passed in via command line arguments.
     :param arguments: CLI arguments
@@ -242,40 +244,47 @@ def _get_parameter_argument(parameter: str, parsed_arguments: Namespace, default
     return value
 
 
+def _generate_event_listener_caller(executables: List[str]) -> LockEventListener:
+    """
+    TODO
+    :param executables:
+    :return:
+    """
+    def event_listener_caller(key: str):
+        for executable in executables:
+            try:
+                process = subprocess.Popen([executable, key], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+                output, stderr = process.communicate()
+                if len(stderr) > 0:
+                    logger.info(f"stderr from executing \"{executable}\": {stderr.decode('utf-8').strip()}")
+                if process.returncode != 0:
+                    logger.error(f"Error when executing \"{executable}\": return code was {process.returncode}")
+                # Not falling over if event listener does!
+            except OSError as e:
+                common_error_string = f"Could not execute \"{executable}\":"
+                if e.errno == errno.ENOEXEC:
+                    logger.warning(f"{common_error_string} {e} (perhaps the executable needs a shebang?)")
+                else:
+                    logger.warning(f"{common_error_string} {e}")
+
+    return event_listener_caller
+
+
 def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
     """
     Locks a lock.
     :param lock_manager: the lock manager
     :param configuration: the configuration required to lock the lock
     """
-    def generate_event_listener_caller(executables: List[str]) -> LOCK_EVENT_LISTENER:
-        def event_listener_caller(key: str):
-            for executable in executables:
-                try:
-                    process = subprocess.Popen([executable, key], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-                    output, stderr = process.communicate()
-                    if len(stderr) > 0:
-                        logger.info(f"stderr from executing \"{executable}\": {stderr.decode('utf-8').strip()}")
-                    if process.returncode != 0:
-                        logger.error(f"Error when executing \"{executable}\": return code was {process.returncode}")
-                    # Not falling over if event listener does!
-                except OSError as e:
-                    common_error_string = f"Could not execute \"{executable}\":"
-                    if e.errno == errno.ENOEXEC:
-                        logger.warning(f"{common_error_string} {e} (perhaps the executable needs a shebang?)")
-                    else:
-                        logger.warning(f"{common_error_string} {e}")
-
-        return event_listener_caller
-
-    event_listeners: LOCK_EVENT_LISTENER = {}
+    event_listeners: LockEventListener = {}
     if configuration.on_before_locked_executables is not None:
-        event_listeners["on_before_lock"] = generate_event_listener_caller(
+        event_listeners["on_before_lock"] = _generate_event_listener_caller(
             configuration.on_before_locked_executables)
     if configuration.on_lock_already_locked_executables is not None:
-        event_listeners["on_lock_already_locked"] = generate_event_listener_caller(
+        event_listeners["on_lock_already_locked"] = _generate_event_listener_caller(
             configuration.on_lock_already_locked_executables)
 
+    lock_information: Optional[ConnectedConsulLockInformation]
     try:
         lock_information = lock_manager.acquire(
             key=configuration.key, blocking=not configuration.non_blocking,
@@ -317,8 +326,9 @@ def main(cli_arguments: List[str]):
     :param cli_arguments: arguments passed in via the CLI
     :raises SystemExit: always raised
     """
+    cli_configuration: CliConfiguration
     try:
-        cli_configuration = parse_cli_configration(cli_arguments)
+        cli_configuration = parse_cli_configuration(cli_arguments)
     except InvalidCliArgumentError as e:
         logger.error(e)
         exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
@@ -328,6 +338,7 @@ def main(cli_arguments: List[str]):
     if cli_configuration.log_verbosity:
         logging.getLogger(PACKAGE_NAME).setLevel(cli_configuration.log_verbosity)
 
+    consul_configuration: ConsulConfiguration
     try:
         consul_configuration = get_consul_configuration_from_environment()
     except KeyError as e:
@@ -337,6 +348,7 @@ def main(cli_arguments: List[str]):
         logger.error(e)
         exit(INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE)
 
+    lock_manager: ConsulLockManager
     try:
         lock_manager = ConsulLockManager(
             consul_configuration=consul_configuration, session_ttl_in_seconds=cli_configuration.session_ttl)

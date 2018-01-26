@@ -26,7 +26,7 @@ from consullock.json_mappers import ConsulLockInformationJSONEncoder, ConsulLock
 from consullock.models import ConsulLockInformation, ConnectedConsulLockInformation
 
 KEY_DIRECTORY_SEPARATOR = "/"
-LOCK_EVENT_LISTENER = Callable[[str], None]
+LockEventListener = Callable[[str], None]
 
 logger = create_logger(__name__)
 
@@ -127,8 +127,8 @@ class ConsulLockManager:
     @_exception_converter
     @_raise_if_teardown_called
     def acquire(self, key: str, blocking: bool=True, timeout: float=None, metadata: Any=None,
-                on_before_lock: LOCK_EVENT_LISTENER=lambda key: None,
-                on_lock_already_locked: LOCK_EVENT_LISTENER=lambda key: None,
+                on_before_lock: LockEventListener=lambda key: None,
+                on_lock_already_locked: LockEventListener=lambda key: None,
                 lock_poll_interval_generator: Callable[[int], float]=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR) \
             -> Optional[ConnectedConsulLockInformation]:
         """
