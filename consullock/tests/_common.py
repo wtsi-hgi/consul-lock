@@ -18,8 +18,6 @@ TEST_VALUE = "world"
 
 TEST_METADATA = {"testString": "metadata", "testFloat": 3.1415926535}
 
-all_capture_builder = CaptureWrapBuilder(True, True, True)
-
 
 def set_consul_env(service: ConsulDockerisedService):
     """

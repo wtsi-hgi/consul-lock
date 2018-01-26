@@ -3,7 +3,7 @@ from time import monotonic
 from typing import Callable, List, Dict, Any
 from unittest.mock import MagicMock, call
 
-from capturewrap import CaptureResult
+from capturewrap import CaptureResult, CaptureWrapBuilder
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
 from consullock.cli import Action
@@ -13,8 +13,7 @@ from consullock.exceptions import DoubleSlashKeyError, InvalidSessionTtlValueErr
     NonNormalisedKeyError
 from consullock.managers import ConsulLockManager, KEY_DIRECTORY_SEPARATOR
 from consullock.models import ConsulLockInformation
-from consullock.tests._common import all_capture_builder, TEST_KEY, TEST_KEYS, TEST_KEYS_2, TEST_KEYS_REGEX, \
-    TEST_METADATA, set_consul_env
+from consullock.tests._common import TEST_KEY, TEST_KEYS, TEST_KEYS_2, TEST_KEYS_REGEX, TEST_METADATA, set_consul_env
 from consullock.tests._test_locks import BaseLockTest, LockerCallable, acquire_locks, TestActionTimeoutError, \
     action_when_locked, DEFAULT_LOCK_ACQUIRE_TIMEOUT, double_action, MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, \
     DOUBLE_SLASH_KEY, NON_NORMALISED_KEY
@@ -28,6 +27,8 @@ class TestConsulLockManager(BaseLockTest):
     """
     Tests for `ConsulLockManager`.
     """
+    _CAPTURE_WRAP_BUILDER = CaptureWrapBuilder(True, True, True)
+
     @staticmethod
     def _build_executor(
             action: Action,
@@ -41,7 +42,8 @@ class TestConsulLockManager(BaseLockTest):
             lock_manager = ConsulLockManager(*init_args_generator(key, service), **init_kwargs_generator(key, service))
             action_args = action_args if action_args is not None else []
             action_kwargs = action_kwargs if action_kwargs is not None else {}
-            return all_capture_builder.build(getattr(lock_manager, action_property))(key, *action_args, **action_kwargs)
+            return TestConsulLockManager._CAPTURE_WRAP_BUILDER.build(
+                getattr(lock_manager, action_property))(key, *action_args, **action_kwargs)
         
         return action_executor
 

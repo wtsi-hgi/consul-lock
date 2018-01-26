@@ -1,3 +1,4 @@
+import itertools
 import json
 import os
 import shutil
@@ -6,8 +7,7 @@ from os import chmod
 from tempfile import mkdtemp
 from typing import List, Any, Optional
 
-import itertools
-from capturewrap import CaptureResult
+from capturewrap import CaptureResult, CaptureWrapBuilder
 from useintest.predefined.consul import ConsulDockerisedService, ConsulServiceController
 
 from consullock.cli import main, Action, NON_BLOCKING_CLI_LONG_PARAMETER, TIMEOUT_CLI_lONG_PARAMETER, \
@@ -18,8 +18,7 @@ from consullock.configuration import SUCCESS_EXIT_CODE, MISSING_REQUIRED_ENVIRON
     INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR
 from consullock.json_mappers import ConsulLockInformationJSONDecoder
 from consullock.models import ConsulLockInformation
-from consullock.tests._common import TEST_KEY, all_capture_builder, set_consul_env, TEST_KEYS, TEST_KEYS_2, \
-    TEST_KEYS_REGEX, TEST_METADATA
+from consullock.tests._common import TEST_KEY, set_consul_env, TEST_KEYS, TEST_KEYS_2, TEST_KEYS_REGEX, TEST_METADATA
 from consullock.tests._test_locks import BaseLockTest, DEFAULT_LOCK_ACQUIRE_TIMEOUT, \
     MAX_WAIT_TIME_FOR_MIN_TTL_SESSION_TO_CLEAR, DOUBLE_SLASH_KEY, NON_NORMALISED_KEY
 from consullock.tests.test_managers import acquire_locks, LockerCallable, action_when_locked, double_action, \
@@ -33,6 +32,8 @@ class TestCli(BaseLockTest):
     """
     Tests for the CLI.
     """
+    _CAPTURE_WRAP_BUILDER = CaptureWrapBuilder(True, True, capture_exceptions=lambda e: isinstance(e, SystemExit))
+
     @staticmethod
     def _build_executor(action: Action, main_args: List[Any]=None, action_args: List[Any]=None) \
             -> LockerCallable:
@@ -41,7 +42,7 @@ class TestCli(BaseLockTest):
 
         def action_executor(key: str, service: ConsulDockerisedService) -> CaptureResult:
             set_consul_env(service)
-            return all_capture_builder.build(main)(main_args + [action.value] + action_args + [key])
+            return TestCli._CAPTURE_WRAP_BUILDER.build(main)(main_args + [action.value] + action_args + [key])
 
         return action_executor
 
@@ -121,7 +122,7 @@ class TestCli(BaseLockTest):
         self.assertEqual(TEST_KEY, json.loads(unlock_result.stdout))
 
     def test_help(self):
-        captured_result = all_capture_builder.build(main)(["-h"])
+        captured_result = TestCli._CAPTURE_WRAP_BUILDER.build(main)(["-h"])
         self.assertIsInstance(captured_result.exception, SystemExit)
         self.assertEqual(SUCCESS_EXIT_CODE, captured_result.exception.code)
         self.assertIn(DESCRIPTION, captured_result.stdout)
@@ -135,7 +136,7 @@ class TestCli(BaseLockTest):
     def test_unlock_with_regex(self):
         def release(service: ConsulDockerisedService):
             set_consul_env(service)
-            captured_result = all_capture_builder.build(main)(
+            captured_result = TestCli._CAPTURE_WRAP_BUILDER.build(main)(
                 [Action.UNLOCK.value, f"-{REGEX_KEY_ENABLED_SHORT_PARAMETER}", TEST_KEYS_REGEX])
             self.assertEqual(SUCCESS_EXIT_CODE, captured_result.exception.code)
             self.assertCountEqual(TEST_KEYS, json.loads(captured_result.stdout))

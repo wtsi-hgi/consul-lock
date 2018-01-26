@@ -8,7 +8,7 @@ import sys
 from argparse import ArgumentParser, Namespace
 from enum import Enum, unique
 from os.path import normpath
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Dict
 
 import demjson as demjson
 
@@ -41,8 +41,6 @@ LOCK_POLL_INTERVAL_SHORT_PARAMETER = "i"
 ACTION_CLI_PARAMETER_ACCESS = "action"
 
 NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE = 0
-
-_NO_DEFAULT_SENTINEL = object()
 
 logger = create_logger(__name__)
 
@@ -144,11 +142,11 @@ def _create_parser() -> ArgumentParser:
         f"--{METADATA_CLI_lONG_PARAMETER}", default=DEFAULT_METADATA, type=str, action=_ParseJsonAction,
         help="additional metadata to add to the lock information (will be converted to JSON)")
     lock_subparser.add_argument(
-        f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=None, type=str, nargs="+", action="append",
+        f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=[], type=str, nargs="+", action="append",
         help="path to executable that is to be called before an attempt is made to acquire a lock, where the lock key "
              "is passed as the first argument. Any failures of this executable are ignored")
     lock_subparser.add_argument(
-        f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", default=None, type=str, nargs="+", action="append",
+        f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", default=[], type=str, nargs="+", action="append",
         help="path to executable that is to be called after an attempt has been made to acquire a lock but failed due "
              "to the lock already been taken, where the lock key is passed as the first argument. Any failures of this "
              "executable are ignored")
@@ -173,75 +171,55 @@ def parse_cli_configuration(arguments: List[str]) -> CliConfiguration:
     :return: the configuration
     """
     try:
-        parsed_arguments = _argument_parser.parse_args(arguments)
+        parsed_arguments = {x.replace("_", "-"): y for x, y in vars(_create_parser().parse_args(arguments)).items()}
     except SystemExit as e:
         if e.code == SUCCESS_EXIT_CODE:
             raise e
         raise InvalidCliArgumentError() from e
 
-    action = parsed_arguments.action
-    if action is None:
+    parsed_action = parsed_arguments[ACTION_CLI_PARAMETER_ACCESS]
+    if parsed_action is None:
         _argument_parser.print_help()
         exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
-    parsed_action = Action(_get_parameter_argument(ACTION_CLI_PARAMETER_ACCESS, parsed_arguments))
+    action = Action(parsed_action)
 
-    session_ttl = _get_parameter_argument(SESSION_TTL_CLI_LONG_PARAMETER, parsed_arguments, default=None)
+    session_ttl = parsed_arguments.get(SESSION_TTL_CLI_LONG_PARAMETER, None)
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
         session_ttl = None
 
     shared_parameters = dict(
-        key=_get_parameter_argument(KEY_CLI_PARAMETER, parsed_arguments),
+        key=parsed_arguments[KEY_CLI_PARAMETER],
         log_verbosity=_get_verbosity(parsed_arguments), session_ttl=session_ttl)
 
-    if parsed_action == Action.LOCK:
+    if action == Action.LOCK:
         return CliLockConfiguration(
             **shared_parameters,
-            non_blocking=_get_parameter_argument(
-                NON_BLOCKING_CLI_LONG_PARAMETER, parsed_arguments, default=DEFAULT_NON_BLOCKING),
-            timeout=_get_parameter_argument(
-                TIMEOUT_CLI_lONG_PARAMETER, parsed_arguments, default=DEFAULT_TIMEOUT),
-            metadata=_get_parameter_argument(
-                METADATA_CLI_lONG_PARAMETER, parsed_arguments, default=DEFAULT_METADATA),
-            on_before_locked_executables=list(itertools.chain(*_get_parameter_argument(
-                ON_BEFORE_LOCK_LONG_PARAMETER, parsed_arguments) or [])),
-            on_lock_already_locked_executables=list(itertools.chain(*_get_parameter_argument(
-                ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, parsed_arguments) or [])),
-            lock_poll_interval=_get_parameter_argument(
-                LOCK_POLL_INTERVAL_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1)))
+            non_blocking=parsed_arguments.get(NON_BLOCKING_CLI_LONG_PARAMETER, DEFAULT_NON_BLOCKING),
+            timeout=parsed_arguments.get(TIMEOUT_CLI_lONG_PARAMETER, DEFAULT_TIMEOUT),
+            metadata=parsed_arguments.get(METADATA_CLI_lONG_PARAMETER, DEFAULT_METADATA),
+            on_before_locked_executables=list(itertools.chain(*parsed_arguments.get(
+                ON_BEFORE_LOCK_LONG_PARAMETER, []))),
+            on_lock_already_locked_executables=list(itertools.chain(*parsed_arguments.get(
+                ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, []))),
+            lock_poll_interval=parsed_arguments.get(
+                LOCK_POLL_INTERVAL_SHORT_PARAMETER, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1)))
     else:
         return CliUnlockConfiguration(
             **shared_parameters,
-            regex_key_enabled=_get_parameter_argument(
-                REGEX_KEY_ENABLED_SHORT_PARAMETER, parsed_arguments, default=DEFAULT_REGEX_KEY_ENABLED))
+            regex_key_enabled=parsed_arguments.get(REGEX_KEY_ENABLED_SHORT_PARAMETER, DEFAULT_REGEX_KEY_ENABLED))
 
 
-def _get_verbosity(parsed_arguments: Namespace) -> int:
+def _get_verbosity(parsed_arguments: Dict) -> int:
     """
     Gets the verbosity level from the parsed arguments.
     :param parsed_arguments: the parsed arguments
     :return: the verbosity level implied
     """
-    verbosity = DEFAULT_LOG_VERBOSITY - \
-                (int(_get_parameter_argument(VERBOSE_CLI_SHORT_PARAMETER, parsed_arguments)) * 10)
+    verbosity = DEFAULT_LOG_VERBOSITY - (int(parsed_arguments[VERBOSE_CLI_SHORT_PARAMETER]) * 10)
     if verbosity < 10:
         raise InvalidCliArgumentError("Cannot provide any further logging - reduce log verbosity")
     assert verbosity <= logging.CRITICAL
     return verbosity
-
-
-def _get_parameter_argument(parameter: str, parsed_arguments: Namespace, default: Any=_NO_DEFAULT_SENTINEL) -> Any:
-    """
-    Gets the argument associated to the given parameter in the given parsed arguments.
-    :param parameter: the parameter of interest
-    :param parsed_arguments: the namespace resulting in the parsing of the argumentst
-    :param default: default to return if no argument for the given parameter
-    :return: the associated argument
-    :raises KeyError: if the parameter does not exist
-    """
-    value = vars(parsed_arguments).get(parameter.replace("-", "_"), default)
-    if value == _NO_DEFAULT_SENTINEL:
-        raise KeyError(parameter)
-    return value
 
 
 def _generate_event_listener_caller(executables: List[str]) -> LockEventListener:

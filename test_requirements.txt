@@ -1,2 +1,2 @@
 useintest>=4.0.1
-capturewrap>=1.0.1
+capturewrap>=1.1.0
