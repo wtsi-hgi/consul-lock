@@ -5,7 +5,7 @@ import json
 import logging
 import subprocess
 import sys
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser
 from enum import Enum, unique
 from os.path import normpath
 from typing import List, Any, Optional, Dict

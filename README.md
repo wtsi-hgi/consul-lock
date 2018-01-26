@@ -1,5 +1,6 @@
 [![Build Status](https://travis-ci.org/wtsi-hgi/consul-lock.svg?branch=master)](https://travis-ci.org/wtsi-hgi/consul-lock)
 [![codecov](https://codecov.io/gh/wtsi-hgi/consul-lock/branch/master/graph/badge.svg)](https://codecov.io/gh/wtsi-hgi/consul-lock)
+[![PyPI version](https://badge.fury.io/py/consullock.svg)](https://badge.fury.io/py/consullock)
 
 # Consul Lock
 _CLI and Python interface for easily managing Consul locks_
