@@ -52,7 +52,7 @@ export CONSUL_HTTP_TOKEN=token
 
 #### General
 ```
-usage: consullock [-h] [-v] {unlock,lock,execute} ...
+usage: consul-lock [-h] [-v] {unlock,lock,execute} ...
 
 Tool to use locks in Consul (v4.2.0)
 
@@ -71,12 +71,12 @@ optional arguments:
 
 #### Locking
 ```
-usage: consullock lock [-h] [--session-ttl SESSION_TTL] [--non-blocking]
-                       [--timeout TIMEOUT] [--metadata METADATA]
-                       [--on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]]
-                       [--on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]]
-                       [-i I]
-                       key
+usage: consul-lock lock [-h] [--session-ttl SESSION_TTL] [--non-blocking]
+                        [--timeout TIMEOUT] [--metadata METADATA]
+                        [--on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]]
+                        [--on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]]
+                        [-i I]
+                        key
 
 positional arguments:
   key                   the lock identifier
@@ -110,7 +110,7 @@ optional arguments:
 
 #### Unlocking              
 ```
-usage: consullock unlock [-h] [-r] key
+usage: consul-lock unlock [-h] [-r] key
 
 positional arguments:
   key         the lock identifier
@@ -123,12 +123,12 @@ optional arguments:
 
 #### Executing with lock
 ```
-usage: consullock execute [-h] [--session-ttl SESSION_TTL] [--non-blocking]
-                          [--timeout TIMEOUT] [--metadata METADATA]
-                          [--on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]]
-                          [--on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]]
-                          [-i I]
-                          key executable
+usage: consul-lock execute [-h] [--session-ttl SESSION_TTL] [--non-blocking]
+                           [--timeout TIMEOUT] [--metadata METADATA]
+                           [--on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]]
+                           [--on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]]
+                           [-i I]
+                           key executable
 
 positional arguments:
   key                   the lock identifier

@@ -20,7 +20,7 @@ from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY,
     get_consul_configuration_from_environment, INVALID_ENVIRONMENT_VARIABLE_EXIT_CODE, \
     PACKAGE_NAME, DESCRIPTION, INVALID_KEY_EXIT_CODE, INVALID_SESSION_TTL_EXIT_CODE, DEFAULT_REGEX_KEY_ENABLED, \
     UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE, VERSION, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR, DEFAULT_METADATA, \
-    ConsulConfiguration
+    ConsulConfiguration, EXECUTABLE_NAME
 from consullock.exceptions import LockAcquireTimeoutError, PermissionDeniedConsulError, \
     InvalidEnvironmentVariableError, InvalidSessionTtlValueError, DoubleSlashKeyError, NonNormalisedKeyError
 from consullock.json_mappers import ConsulLockInformationJSONEncoder
@@ -126,7 +126,7 @@ def _create_parser() -> ArgumentParser:
     Creates argument parser for the CLI.
     :return: the argument parser
     """
-    parser = ArgumentParser(prog=PACKAGE_NAME, description=f"{DESCRIPTION} (v{VERSION})")
+    parser = ArgumentParser(prog=EXECUTABLE_NAME, description=f"{DESCRIPTION} (v{VERSION})")
     parser.add_argument(
         f"-{VERBOSE_SHORT_PARAMETER}", action="count", default=0,
         help="increase the level of log verbosity (add multiple increase further)")
