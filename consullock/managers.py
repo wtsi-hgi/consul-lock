@@ -2,12 +2,18 @@ import atexit
 import json
 import os
 import re
+import subprocess
+import sys
 from datetime import datetime
+from io import TextIOWrapper, StringIO
 from json import JSONDecodeError
 from os.path import normpath
 from threading import Lock
 from time import sleep, monotonic
-from typing import Callable, Optional, Any, Set, List, Dict, Sequence
+
+from munch import Munch
+from types import SimpleNamespace
+from typing import Callable, Optional, Any, Set, List, Dict, Sequence, Tuple
 
 import requests
 from consul import Consul
@@ -186,6 +192,63 @@ class ConsulLockManager:
             logger.info(f"Destroyed session (did not acquire the lock)")
 
         return lock_information
+
+    @_exception_converter
+    @_raise_if_teardown_called
+    def execute(self, key: str, executable: str, *, capture_stdout: bool=False, capture_stderr: bool=False,
+                **acquire_kwargs) -> Tuple[Optional[int], Optional[bytes], Optional[bytes]]:
+        """
+        Executes the given executable whilst holding the given lock.
+        :param key:
+        :param executable:
+        :param capture_stdout:
+        :param capture_stderr:
+        :param acquire_kwargs:
+        :return:
+        """
+        lock = self.acquire(key, **acquire_kwargs)
+        if lock is None:
+            return None, None, None
+        return self.execute_with_lock(executable, lock, capture_stdout=capture_stdout, capture_stderr=capture_stderr)
+
+    @_exception_converter
+    @_raise_if_teardown_called
+    def execute_with_lock(self, executable: str, lock: ConnectedConsulLockInformation, *, capture_stdout: bool=False,
+                          capture_stderr: bool=False) -> Tuple[int, Optional[bytes], Optional[bytes]]:
+        """
+        TODO
+        :param executable:
+        :param lock:
+        :param capture_stdout:
+        :param capture_stderr:
+        :return:
+        """
+        assert lock is not None
+        redirects = Munch(stdout=subprocess.PIPE if capture_stdout else sys.stdout,
+                         stderr=subprocess.PIPE if capture_stderr else sys.stderr)
+
+        # Patch for when sys.stdout and sys.stderr have been reassigned (e.g. in IDE test runners)
+        non_realtime_redirects: Dict[str, StringIO] = {}
+        for name, redirect in redirects.items():
+            if isinstance(redirect, StringIO):
+                logger.warning(f"Cannot capture {name} in real-time as `sys.{name}` does not have a fileno")
+                non_realtime_redirects[name] = redirect
+                redirects[name] = subprocess.PIPE
+
+        outputs = Munch(stdout=None, stderr=None)
+        with lock:
+            process = subprocess.Popen(executable, shell=True, stdout=redirects.stdout, stderr=redirects.stderr)
+            outputs.stdout, outputs.stderr = process.communicate()
+
+        # Second part of redirect reassignment patch
+        for name, original_redirect in non_realtime_redirects.items():
+            captured = outputs[name]
+            getattr(sys, name).write(captured.decode("utf-8"))
+
+        return process.returncode, \
+               outputs.stdout if capture_stdout else None, \
+               outputs.stderr if capture_stderr else None
+
 
     @_exception_converter
     @_raise_if_teardown_called

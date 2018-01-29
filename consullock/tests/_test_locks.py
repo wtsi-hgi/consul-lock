@@ -12,7 +12,7 @@ from consullock.configuration import MIN_LOCK_TIMEOUT_IN_SECONDS
 from consullock.managers import ConsulLockManager
 from consullock.exceptions import ConsulLockBaseError
 from consullock.models import ConsulLockInformation
-from consullock.tests._common import TEST_KEY
+from consullock.tests._common import KEY_1
 
 LockActionCallable = Callable[[str, ConsulDockerisedService], CaptureResult]
 LockerCallable = LockActionCallable
@@ -35,7 +35,7 @@ def acquire_locks(locker: LockerCallable, keys: List[str]=None,
     :return: the result of the lock acquisitions
     """
     if keys is None:
-        keys = [TEST_KEY]
+        keys = [KEY_1]
     lock_results: List[CaptureResult] = []
     with ConsulServiceController().start_service() as service:
         for key in keys:
@@ -43,6 +43,21 @@ def acquire_locks(locker: LockerCallable, keys: List[str]=None,
         if on_complete is not None:
             on_complete(service)
         return lock_results
+
+
+def single_action(action: LockActionCallable, action_timeout: float=DEFAULT_LOCK_ACQUIRE_TIMEOUT) -> CaptureResult:
+    """
+    TODO
+    :param action:
+    :param action_timeout:
+    :return:
+    """
+    with ConsulServiceController().start_service() as service:
+        @timeout_decorator.timeout(action_timeout, timeout_exception=TestActionTimeoutError)
+        def wrapped_action() -> CaptureResult:
+            return action(KEY_1, service)
+
+        return wrapped_action()
 
 
 def double_action(first_action: LockActionCallable, second_action: LockActionCallable,
@@ -59,13 +74,13 @@ def double_action(first_action: LockActionCallable, second_action: LockActionCal
     :raises TestActionTimeoutError: raised if the second action times out
     """
     with ConsulServiceController().start_service() as service:
-        first_action_result = first_action(TEST_KEY, service)
+        first_action_result = first_action(KEY_1, service)
         if first_action_callback:
             first_action_callback(first_action_result)
 
         @timeout_decorator.timeout(second_action_timeout, timeout_exception=TestActionTimeoutError)
         def second_action_with_timeout() -> CaptureResult:
-            return second_action(TEST_KEY, service)
+            return second_action(KEY_1, service)
 
         try:
             return first_action_result, second_action_with_timeout()
@@ -82,7 +97,7 @@ def action_when_locked(action: LockActionCallable, timeout: float=DEFAULT_LOCK_A
     """
     def first_locker(key: str, service: ConsulDockerisedService) -> CaptureResult:
         lock_manager = ConsulLockManager(consul_client=service.create_consul_client())
-        lock_information = lock_manager.acquire(TEST_KEY)
+        lock_information = lock_manager.acquire(KEY_1)
         return CaptureResult(return_value=lock_information)
 
     def first_lock_callback(lock_result: CaptureResult):
@@ -193,4 +208,16 @@ class BaseLockTest(unittest.TestCase, metaclass=ABCMeta):
     def test_lock_with_lock_poll_interval(self):
         """
         Test locking with custom lock poll interval.
+        """
+
+    @abstractmethod
+    def test_execute_when_not_locked(self):
+        """
+        TODO
+        """
+
+    @abstractmethod
+    def test_execute_when_locked(self):
+        """
+        TODO
         """

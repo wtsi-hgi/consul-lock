@@ -274,7 +274,7 @@ def _generate_event_listener_caller(executables: List[str]) -> LockEventListener
     return event_listener_caller
 
 
-def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration) \
+def _acquire_lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration) \
         -> Optional[ConnectedConsulLockInformation]:
     """
     TODO
@@ -302,36 +302,36 @@ def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration) 
         exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
 
 
-def _lock_and_execute(lock_manager: ConsulLockManager, configuration: CliLockAndExecuteConfiguration):
+def _acquire_lock_and_execute(lock_manager: ConsulLockManager, configuration: CliLockAndExecuteConfiguration):
     """
     Executes whilst holding a lock, exiting after the execute returns with the executables return code.
     :param lock_manager: the lock manager
     :param configuration: the configuration
     """
-    with _lock(lock_manager, configuration):
-        process = subprocess.Popen(configuration.executable, shell=True, stdout=sys.stdout, stderr=sys.stderr)
-        process.wait()
+    lock = _acquire_lock(lock_manager, configuration)
+    if lock is None:
+        exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
+    return_code, _, _ = lock_manager.execute_with_lock(configuration.executable, lock)
+    exit(return_code)
 
-    exit(process.returncode)
 
-
-def _lock_and_exit(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
+def _acquire_lock_and_exit(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
     """
     Locks a lock then exits.
     :param lock_manager: the lock manager
     :param configuration: the configuration required to lock the lock
     """
-    lock_information = _lock(lock_manager, configuration)
-    print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
+    lock = _acquire_lock(lock_manager, configuration)
+    print(json.dumps(lock, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
 
-    if lock_information is None:
+    if lock is None:
         logger.error(f"Unable to acquire lock: {configuration.key}")
         exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
 
     exit(SUCCESS_EXIT_CODE)
 
 
-def _unlock(lock_manager: ConsulLockManager, configuration: CliUnlockConfiguration):
+def _release_lock(lock_manager: ConsulLockManager, configuration: CliUnlockConfiguration):
     """
     Unlocks a lock.
     :param lock_manager: the lock manager
@@ -384,9 +384,9 @@ def main(cli_arguments: List[str]):
 
     try:
         {
-            CliLockConfiguration: _lock_and_exit,
-            CliLockAndExecuteConfiguration: _lock_and_execute,
-            CliUnlockConfiguration: _unlock
+            CliLockConfiguration: _acquire_lock_and_exit,
+            CliLockAndExecuteConfiguration: _acquire_lock_and_execute,
+            CliUnlockConfiguration: _release_lock
         }[type(cli_configuration)](lock_manager, cli_configuration)
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
