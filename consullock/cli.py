@@ -27,13 +27,14 @@ from consullock.json_mappers import ConsulLockInformationJSONEncoder
 from consullock.managers import ConsulLockManager, LockEventListener
 from consullock.models import ConnectedConsulLockInformation
 
-KEY_CLI_PARAMETER = "key"
-SESSION_TTL_CLI_LONG_PARAMETER = "session-ttl"
-VERBOSE_CLI_SHORT_PARAMETER = "v"
+KEY_PARAMETER = "key"
+EXECUTABLE_PARAMETER = "executable"
+SESSION_TTL_LONG_PARAMETER = "session-ttl"
+VERBOSE_SHORT_PARAMETER = "v"
 REGEX_KEY_ENABLED_SHORT_PARAMETER = "r"
-NON_BLOCKING_CLI_LONG_PARAMETER = "non-blocking"
-TIMEOUT_CLI_lONG_PARAMETER = "timeout"
-METADATA_CLI_lONG_PARAMETER = "metadata"
+NON_BLOCKING_LONG_PARAMETER = "non-blocking"
+TIMEOUT_LONG_PARAMETER = "timeout"
+METADATA_LONG_PARAMETER = "metadata"
 ON_BEFORE_LOCK_LONG_PARAMETER = "on-before-lock"
 ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER = "on-already-locked"
 LOCK_POLL_INTERVAL_SHORT_PARAMETER = "i"
@@ -58,13 +59,14 @@ class Action(Enum):
     """
     LOCK = "lock"
     UNLOCK = "unlock"
+    EXECUTE = "execute"
 
 
 class CliConfiguration:
     """
     Configuration, set via the CLI.
     """
-    def __init__(self, key: str, log_verbosity: int=DEFAULT_LOG_VERBOSITY, session_ttl: float=DEFAULT_SESSION_TTL):
+    def __init__(self, key: str, *, log_verbosity: int=DEFAULT_LOG_VERBOSITY, session_ttl: float=DEFAULT_SESSION_TTL):
         self.key = key
         self.log_verbosity = log_verbosity
         self.session_ttl = session_ttl
@@ -74,8 +76,8 @@ class CliUnlockConfiguration(CliConfiguration):
     """
     Configuration for unlocking a lock, set via the CLI.
     """
-    def __init__(self, *args, regex_key_enabled: bool=DEFAULT_REGEX_KEY_ENABLED, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, key: str, *, regex_key_enabled: bool=DEFAULT_REGEX_KEY_ENABLED, **kwargs):
+        super().__init__(key, **kwargs)
         self.regex_key_enabled = regex_key_enabled
 
 
@@ -83,11 +85,11 @@ class CliLockConfiguration(CliConfiguration):
     """
     Configuration for locking a lock, set via the CLI.
     """
-    def __init__(self, *args, non_blocking: bool=DEFAULT_NON_BLOCKING, timeout: float=DEFAULT_TIMEOUT,
+    def __init__(self, key: str, *, non_blocking: bool=DEFAULT_NON_BLOCKING, timeout: float=DEFAULT_TIMEOUT,
                  metadata: Any=DEFAULT_METADATA, on_before_locked_executables: List[str]=None,
                  on_lock_already_locked_executables: List[str]=None,
                  lock_poll_interval: float=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1), **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(key, **kwargs)
         self.non_blocking = non_blocking
         self.timeout = timeout
         self.metadata = metadata
@@ -96,6 +98,15 @@ class CliLockConfiguration(CliConfiguration):
         self.on_lock_already_locked_executables = on_lock_already_locked_executables \
             if on_lock_already_locked_executables is not None else []
         self.lock_poll_interval = lock_poll_interval
+
+
+class CliLockAndExecuteConfiguration(CliLockConfiguration):
+    """
+    TODO
+    """
+    def __init__(self, key: str, executable: str, **kwargs):
+        super().__init__(key, **kwargs)
+        self.executable = executable
 
 
 class _ParseJsonAction(argparse.Action):
@@ -115,9 +126,9 @@ def _create_parser() -> ArgumentParser:
     Creates argument parser for the CLI.
     :return: the argument parser
     """
-    parser = ArgumentParser(description=f"{DESCRIPTION} (v{VERSION})")
+    parser = ArgumentParser(prog=PACKAGE_NAME, description=f"{DESCRIPTION} (v{VERSION})")
     parser.add_argument(
-        f"-{VERBOSE_CLI_SHORT_PARAMETER}", action="count", default=0,
+        f"-{VERBOSE_SHORT_PARAMETER}", action="count", default=0,
         help="increase the level of log verbosity (add multiple increase further)")
     subparsers = parser.add_subparsers(dest=ACTION_CLI_PARAMETER_ACCESS, help="action")
 
@@ -127,36 +138,44 @@ def _create_parser() -> ArgumentParser:
         help="whether the key should be treated as a regular expression and to release all matching locks")
 
     lock_subparser = subparsers.add_parser(Action.LOCK.value, help="acquire a lock")
-    lock_subparser.add_argument(
-        f"--{SESSION_TTL_CLI_LONG_PARAMETER}", type=float, default=DEFAULT_SESSION_TTL,
-        help=f"time to live (ttl) in seconds of the session that will be created to hold the lock. Must be between "
-             f"{MIN_LOCK_TIMEOUT_IN_SECONDS}s and {MAX_LOCK_TIMEOUT_IN_SECONDS}s (inclusive). If set to "
-             f"{NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE}, the session will not expire")
-    lock_subparser.add_argument(
-        f"--{NON_BLOCKING_CLI_LONG_PARAMETER}", action="store_true",
-        default=DEFAULT_NON_BLOCKING, help="do not block if cannot lock straight away")
-    lock_subparser.add_argument(
-        f"--{TIMEOUT_CLI_lONG_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
-        help="give up trying to acquire the key after this many seconds (where 0 is never)")
-    lock_subparser.add_argument(
-        f"--{METADATA_CLI_lONG_PARAMETER}", default=DEFAULT_METADATA, type=str, action=_ParseJsonAction,
-        help="additional metadata to add to the lock information (will be converted to JSON)")
-    lock_subparser.add_argument(
-        f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=[], type=str, nargs="+", action="append",
-        help="path to executable that is to be called before an attempt is made to acquire a lock, where the lock key "
-             "is passed as the first argument. Any failures of this executable are ignored")
-    lock_subparser.add_argument(
-        f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", default=[], type=str, nargs="+", action="append",
-        help="path to executable that is to be called after an attempt has been made to acquire a lock but failed due "
-             "to the lock already been taken, where the lock key is passed as the first argument. Any failures of this "
-             "executable are ignored")
-    lock_subparser.add_argument(
-        f"-{LOCK_POLL_INTERVAL_SHORT_PARAMETER}", default=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1), type=float,
-        help="number of seconds between polls to acquire a locked lock")
+    lock_and_execute_subparser = subparsers.add_parser(Action.EXECUTE.value, help="call executable whilst holding lock")
 
-    for subparser in [unlock_subparser, lock_subparser]:
+    for subparser in (lock_subparser, lock_and_execute_subparser):
         subparser.add_argument(
-            KEY_CLI_PARAMETER, type=str, help="the lock identifier")
+            f"--{SESSION_TTL_LONG_PARAMETER}", type=float, default=DEFAULT_SESSION_TTL,
+            help=f"time to live (ttl) in seconds of the session that will be created to hold the lock. Must be between "
+                 f"{MIN_LOCK_TIMEOUT_IN_SECONDS}s and {MAX_LOCK_TIMEOUT_IN_SECONDS}s (inclusive). If set to "
+                 f"{NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE}, the session will not expire")
+        subparser.add_argument(
+            f"--{NON_BLOCKING_LONG_PARAMETER}", action="store_true",
+            default=DEFAULT_NON_BLOCKING, help="do not block if cannot lock straight away")
+        subparser.add_argument(
+            f"--{TIMEOUT_LONG_PARAMETER}", default=DEFAULT_TIMEOUT, type=float,
+            help="give up trying to acquire the key after this many seconds (where 0 is never)")
+        subparser.add_argument(
+            f"--{METADATA_LONG_PARAMETER}", default=DEFAULT_METADATA, type=str, action=_ParseJsonAction,
+            help="additional metadata to add to the lock information (will be converted to JSON)")
+        subparser.add_argument(
+            f"--{ON_BEFORE_LOCK_LONG_PARAMETER}", default=[], type=str, nargs="+", action="append",
+            help="path to executable that is to be called before an attempt is made to acquire a lock, where the lock "
+                 "key is passed as the first argument. Any failures of this executable are ignored")
+        subparser.add_argument(
+            f"--{ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER}", default=[], type=str, nargs="+", action="append",
+            help="path to executable that is to be called after an attempt has been made to acquire a lock but failed "
+                 "due to the lock already been taken, where the lock key is passed as the first argument. Any failures "
+                 "of this executable are ignored")
+        subparser.add_argument(
+            f"-{LOCK_POLL_INTERVAL_SHORT_PARAMETER}", default=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1), type=float,
+            help="number of seconds between polls to acquire a locked lock")
+
+    # TODO: probably a better way of iterating subparsers on `subparsers`
+    for subparser in [unlock_subparser, lock_subparser, lock_and_execute_subparser]:
+        subparser.add_argument(
+            KEY_PARAMETER, type=str, help="the lock identifier")
+
+    lock_and_execute_subparser.add_argument(
+        EXECUTABLE_PARAMETER, type=str,
+        help="TODO")
 
     return parser
 
@@ -171,7 +190,7 @@ def parse_cli_configuration(arguments: List[str]) -> CliConfiguration:
     :return: the configuration
     """
     try:
-        parsed_arguments = {x.replace("_", "-"): y for x, y in vars(_create_parser().parse_args(arguments)).items()}
+        parsed_arguments = {x.replace("_", "-"): y for x, y in vars(_argument_parser.parse_args(arguments)).items()}
     except SystemExit as e:
         if e.code == SUCCESS_EXIT_CODE:
             raise e
@@ -183,30 +202,37 @@ def parse_cli_configuration(arguments: List[str]) -> CliConfiguration:
         exit(INVALID_CLI_ARGUMENT_EXIT_CODE)
     action = Action(parsed_action)
 
-    session_ttl = parsed_arguments.get(SESSION_TTL_CLI_LONG_PARAMETER, None)
+    session_ttl = parsed_arguments.get(SESSION_TTL_LONG_PARAMETER, None)
     if session_ttl == NO_EXPIRY_SESSION_TTL_CLI_PARAMETER_VALUE:
         session_ttl = None
 
     shared_parameters = dict(
-        key=parsed_arguments[KEY_CLI_PARAMETER],
+        key=parsed_arguments[KEY_PARAMETER],
         log_verbosity=_get_verbosity(parsed_arguments), session_ttl=session_ttl)
 
-    if action == Action.LOCK:
-        return CliLockConfiguration(
+    if action == Action.UNLOCK:
+        return CliUnlockConfiguration(
             **shared_parameters,
-            non_blocking=parsed_arguments.get(NON_BLOCKING_CLI_LONG_PARAMETER, DEFAULT_NON_BLOCKING),
-            timeout=parsed_arguments.get(TIMEOUT_CLI_lONG_PARAMETER, DEFAULT_TIMEOUT),
-            metadata=parsed_arguments.get(METADATA_CLI_lONG_PARAMETER, DEFAULT_METADATA),
+            regex_key_enabled=parsed_arguments.get(REGEX_KEY_ENABLED_SHORT_PARAMETER, DEFAULT_REGEX_KEY_ENABLED))
+    else:
+        parameters = dict(
+            **shared_parameters,
+            non_blocking=parsed_arguments.get(NON_BLOCKING_LONG_PARAMETER, DEFAULT_NON_BLOCKING),
+            timeout=parsed_arguments.get(TIMEOUT_LONG_PARAMETER, DEFAULT_TIMEOUT),
+            metadata=parsed_arguments.get(METADATA_LONG_PARAMETER, DEFAULT_METADATA),
             on_before_locked_executables=list(itertools.chain(*parsed_arguments.get(
                 ON_BEFORE_LOCK_LONG_PARAMETER, []))),
             on_lock_already_locked_executables=list(itertools.chain(*parsed_arguments.get(
                 ON_LOCK_ALREADY_LOCKED_LONG_PARAMETER, []))),
             lock_poll_interval=parsed_arguments.get(
                 LOCK_POLL_INTERVAL_SHORT_PARAMETER, DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1)))
-    else:
-        return CliUnlockConfiguration(
-            **shared_parameters,
-            regex_key_enabled=parsed_arguments.get(REGEX_KEY_ENABLED_SHORT_PARAMETER, DEFAULT_REGEX_KEY_ENABLED))
+
+        if action == Action.LOCK:
+            return CliLockConfiguration(**parameters)
+        else:
+            return CliLockAndExecuteConfiguration(
+                **parameters,
+                executable=parsed_arguments[EXECUTABLE_PARAMETER])
 
 
 def _get_verbosity(parsed_arguments: Dict) -> int:
@@ -215,7 +241,7 @@ def _get_verbosity(parsed_arguments: Dict) -> int:
     :param parsed_arguments: the parsed arguments
     :return: the verbosity level implied
     """
-    verbosity = DEFAULT_LOG_VERBOSITY - (int(parsed_arguments[VERBOSE_CLI_SHORT_PARAMETER]) * 10)
+    verbosity = DEFAULT_LOG_VERBOSITY - (int(parsed_arguments[VERBOSE_SHORT_PARAMETER]) * 10)
     if verbosity < 10:
         raise InvalidCliArgumentError("Cannot provide any further logging - reduce log verbosity")
     assert verbosity <= logging.CRITICAL
@@ -248,11 +274,13 @@ def _generate_event_listener_caller(executables: List[str]) -> LockEventListener
     return event_listener_caller
 
 
-def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
+def _acquire_lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration) \
+        -> Optional[ConnectedConsulLockInformation]:
     """
-    Locks a lock.
-    :param lock_manager: the lock manager
-    :param configuration: the configuration required to lock the lock
+    TODO
+    :param lock_manager:
+    :param configuration:
+    :return:
     """
     event_listeners: LockEventListener = {}
     if configuration.on_before_locked_executables is not None:
@@ -262,9 +290,8 @@ def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
         event_listeners["on_lock_already_locked"] = _generate_event_listener_caller(
             configuration.on_lock_already_locked_executables)
 
-    lock_information: Optional[ConnectedConsulLockInformation]
     try:
-        lock_information = lock_manager.acquire(
+        return lock_manager.acquire(
             key=configuration.key, blocking=not configuration.non_blocking,
             timeout=configuration.timeout, metadata=configuration.metadata, **event_listeners,
             lock_poll_interval_generator=lambda i: configuration.lock_poll_interval)
@@ -274,16 +301,37 @@ def _lock(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
         print(json.dumps(None))
         exit(LOCK_ACQUIRE_TIMEOUT_EXIT_CODE)
 
-    print(json.dumps(lock_information, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
 
-    if lock_information is None:
+def _acquire_lock_and_execute(lock_manager: ConsulLockManager, configuration: CliLockAndExecuteConfiguration):
+    """
+    Executes whilst holding a lock, exiting after the execute returns with the executables return code.
+    :param lock_manager: the lock manager
+    :param configuration: the configuration
+    """
+    lock = _acquire_lock(lock_manager, configuration)
+    if lock is None:
+        exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
+    return_code, _, _ = lock_manager.execute_with_lock(configuration.executable, lock)
+    exit(return_code)
+
+
+def _acquire_lock_and_exit(lock_manager: ConsulLockManager, configuration: CliLockConfiguration):
+    """
+    Locks a lock then exits.
+    :param lock_manager: the lock manager
+    :param configuration: the configuration required to lock the lock
+    """
+    lock = _acquire_lock(lock_manager, configuration)
+    print(json.dumps(lock, cls=ConsulLockInformationJSONEncoder, sort_keys=True))
+
+    if lock is None:
         logger.error(f"Unable to acquire lock: {configuration.key}")
         exit(UNABLE_TO_ACQUIRE_LOCK_EXIT_CODE)
 
     exit(SUCCESS_EXIT_CODE)
 
 
-def _unlock(lock_manager: ConsulLockManager, configuration: CliUnlockConfiguration):
+def _release_lock(lock_manager: ConsulLockManager, configuration: CliUnlockConfiguration):
     """
     Unlocks a lock.
     :param lock_manager: the lock manager
@@ -335,10 +383,11 @@ def main(cli_arguments: List[str]):
         exit(INVALID_SESSION_TTL_EXIT_CODE)
 
     try:
-        if isinstance(cli_configuration, CliLockConfiguration):
-            _lock(lock_manager, cli_configuration)
-        else:
-            _unlock(lock_manager, cli_configuration)
+        {
+            CliLockConfiguration: _acquire_lock_and_exit,
+            CliLockAndExecuteConfiguration: _acquire_lock_and_execute,
+            CliUnlockConfiguration: _release_lock
+        }[type(cli_configuration)](lock_manager, cli_configuration)
     except PermissionDeniedConsulError as e:
         error_message = f"Invalid credentials - are you sure you have set {CONSUL_TOKEN_ENVIRONMENT_VARIABLE} " \
                         f"correctly?"
