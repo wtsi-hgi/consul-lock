@@ -9,6 +9,7 @@ _CLI and Python interface for easily managing Consul locks_
 ## About
 - CLI & Python interface:
     - Acquire and release a lock.
+    - Execute shell whilst holding a lock (releasing on exit).
     - Set TTL of the session that acquires a lock.
     - Blocking and non-blocking locking.
     - Lock acquire timeouts.
@@ -51,28 +52,31 @@ export CONSUL_HTTP_TOKEN=token
 
 #### General
 ```
-usage: consul-lock [-h] [-v] {unlock,lock} ...
+usage: consullock [-h] [-v] {unlock,lock,execute} ...
 
-Tool to use locks in Consul
+Tool to use locks in Consul (v4.2.0)
 
 positional arguments:
-  {unlock,lock}  action
-    unlock       release a lock
-    lock         acquire a lock
+  {unlock,lock,execute}
+                        action
+    unlock              release a lock
+    lock                acquire a lock
+    execute             call executable whilst holding lock
 
 optional arguments:
-  -h, --help     show this help message and exit
-  -v             increase the level of log verbosity (add multiple increase
-                 further)
+  -h, --help            show this help message and exit
+  -v                    increase the level of log verbosity (add multiple
+                        increase further)
 ```
 
 #### Locking
 ```
-usage: cli.py lock [-h] [--session-ttl SESSION_TTL] [--non-blocking]
-                   [--timeout TIMEOUT] [--metadata METADATA]
-                   [--on-before-lock ON_BEFORE_LOCK]
-                   [--on-already-locked ON_ALREADY_LOCKED]
-                   key
+usage: consullock lock [-h] [--session-ttl SESSION_TTL] [--non-blocking]
+                       [--timeout TIMEOUT] [--metadata METADATA]
+                       [--on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]]
+                       [--on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]]
+                       [-i I]
+                       key
 
 positional arguments:
   key                   the lock identifier
@@ -100,22 +104,65 @@ optional arguments:
                         to the lock already been taken, where the lock key is
                         passed as the first argument. Any failures of this
                         executable are ignored
+  -i I                  number of seconds between polls to acquire a locked
+                        lock
 ```
 
 #### Unlocking              
 ```
-usage: consul-lock unlock [-h] [-r] key
+usage: consullock unlock [-h] [-r] key
 
 positional arguments:
   key         the lock identifier
 
 optional arguments:
   -h, --help  show this help message and exit
-  -r          Whether the key should be treated as a regular expression and to
+  -r          whether the key should be treated as a regular expression and to
               release all matching locks
 ```
 
+#### Executing with lock
+```
+usage: consullock execute [-h] [--session-ttl SESSION_TTL] [--non-blocking]
+                          [--timeout TIMEOUT] [--metadata METADATA]
+                          [--on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]]
+                          [--on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]]
+                          [-i I]
+                          key executable
+
+positional arguments:
+  key                   the lock identifier
+  executable            to execute in shell
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --session-ttl SESSION_TTL
+                        time to live (ttl) in seconds of the session that will
+                        be created to hold the lock. Must be between 10s and
+                        86400s (inclusive). If set to 0, the session will not
+                        expire
+  --non-blocking        do not block if cannot lock straight away
+  --timeout TIMEOUT     give up trying to acquire the key after this many
+                        seconds (where 0 is never)
+  --metadata METADATA   additional metadata to add to the lock information
+                        (will be converted to JSON)
+  --on-before-lock ON_BEFORE_LOCK [ON_BEFORE_LOCK ...]
+                        path to executable that is to be called before an
+                        attempt is made to acquire a lock, where the lock key
+                        is passed as the first argument. Any failures of this
+                        executable are ignored
+  --on-already-locked ON_ALREADY_LOCKED [ON_ALREADY_LOCKED ...]
+                        path to executable that is to be called after an
+                        attempt has been made to acquire a lock but failed due
+                        to the lock already been taken, where the lock key is
+                        passed as the first argument. Any failures of this
+                        executable are ignored
+  -i I                  number of seconds between polls to acquire a locked
+                        lock
+```
+
 #### Examples
+##### Acquire lock
 Block until acquires lock with key "my/lock", which will expire after 10 minutes:
 ```
 $ consul-lock lock --session-ttl=600 my/lock
@@ -134,13 +181,15 @@ $ echo $?
 ```
 (where `null` is the JSON output, written to stdout)
 
-Add metadata to lock:
+
+##### Add metadata to lock
 ```
 $ consul-lock lock --metadata={"testing": 123} my/lock
 {"created": "2017-12-05T12:26:13.717995", "key": "my/lock", "metadata": {"testing": 123}, "secondsToLock": 4.327880731027108, "session": "6ad662de-6e0c-8e0f-d92c-5fface60c49b"}
 ```
 
-Acquire lock with event listeners:
+
+##### Acquire lock with event listeners
 ```
 $ consul-lock lock --on-before-lock=./my-before-script.sh --on-already-locked=./my-locked-script.sh my/lock
 {"created": "2017-12-07T13:02:06.773088", "key": "my/lock", "secondsToLock": 1.349498052150011e-05, "session": "459266be-2a85-464e-aa08-eda97613a29c"}
@@ -149,13 +198,21 @@ _Note: if specifying event listeners in the form `--x y`, you will need to expli
 options with a double dash, e.g. `consul-lock lock --on-before-lock ./my-before-script.sh -- my/lock`._
 
 
-Unlock lock:
+##### Unlock lock
 ```bash
 $ consul-lock unlock my/lock
 ["my/lock"]
 $ echo $?
 0
 ```
+
+
+##### Execute shell with lock
+```bash
+$ consul-lock execute my/lock ./my-executable
+I am printed in "my-executable"
+```
+_Note: the return code is the result of the executable_
 
 
 ### Python
@@ -173,7 +230,7 @@ lock_manager = ConsulLockManager(
 # will be made (see: https://www.consul.io/docs/commands/index.html#environment-variables).
 
 # Use lock in context
-with lock_manager.acquire("my/lock") as lock:
+with lock_manager.acquire("my/lock"):
     do_things_holding_lock()
 
 # Get lock
@@ -193,6 +250,9 @@ lock_manager.release_all("my/lock-1", "my/lock-2", "my/lock-3")
 
 # Release locks with key matching regex
 lock_manager.release_regex("my/.*")
+
+# Execute shell whilst holding lock (note: use context manager if executing Python!)
+lock_manager.execute("my/lock", "echo Hello World")
 ```
 
 

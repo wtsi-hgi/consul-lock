@@ -168,14 +168,13 @@ def _create_parser() -> ArgumentParser:
             f"-{LOCK_POLL_INTERVAL_SHORT_PARAMETER}", default=DEFAULT_LOCK_POLL_INTERVAL_GENERATOR(1), type=float,
             help="number of seconds between polls to acquire a locked lock")
 
-    # TODO: probably a better way of iterating subparsers on `subparsers`
+    # XXX: probably a better way of iterating subparsers on `subparsers`
     for subparser in [unlock_subparser, lock_subparser, lock_and_execute_subparser]:
         subparser.add_argument(
             KEY_PARAMETER, type=str, help="the lock identifier")
 
     lock_and_execute_subparser.add_argument(
-        EXECUTABLE_PARAMETER, type=str,
-        help="TODO")
+        EXECUTABLE_PARAMETER, type=str, help="to execute in shell")
 
     return parser
 
