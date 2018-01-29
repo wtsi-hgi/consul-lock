@@ -217,7 +217,7 @@ _Note: the return code is the result of the executable_
 
 ### Python
 ```python
-from typing import Set
+from typing import Dict
 from consullock.configuration import get_consul_configuration_from_environment
 from consullock.managers import ConsulLockManager
 from consullock.models import ConsulLockInformation
