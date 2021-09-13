@@ -1,5 +1,5 @@
 python-consul>=0.7.2
 timeout-decorator>=0.4.0
 hgijson>=1.5.0
-demjson>=2.2.4
+demjson3>=3.0.5
 munch>=2.2.0

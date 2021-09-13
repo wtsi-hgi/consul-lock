@@ -10,7 +10,7 @@ from enum import Enum, unique
 from os.path import normpath
 from typing import List, Any, Optional, Dict
 
-import demjson as demjson
+import demjson3 as demjson
 
 from consullock._logging import create_logger
 from consullock.configuration import DEFAULT_SESSION_TTL, DEFAULT_LOG_VERBOSITY, DEFAULT_NON_BLOCKING, \
